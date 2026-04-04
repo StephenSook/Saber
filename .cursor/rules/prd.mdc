@@ -1,0 +1,190 @@
+---
+alwaysApply: false
+---
+# SABER
+### AI That Separates Language Barriers from Knowledge Gaps
+
+---
+You are helping me build the backend for Saber, an AI-powered educational diagnostic
+tool built with Next.js 14 App Router (TypeScript). My role is Backend Lead.
+
+Stack:
+  Framework:   Next.js 14 App Router, TypeScript
+  Database:    Supabase — 20 student demo dataset
+  AI/LLM:      Google Gemini JS SDK (@google/generative-ai)
+  CSV Parsing: papaparse
+  Validation:  Zod
+  Deployment:  Vercel
+
+My responsibilities:
+  - All route handlers in app/api/
+  - lib/db.ts         — typed query layer on top of Siju's schema
+  - lib/gemini.ts     — Gemini client + prompt templates
+  - lib/classifier.ts — classification logic
+  - lib/errors.ts     — shared error handling utility
+
+NOT my responsibility:
+  - data/schema.sql           — owned by Siju (Data Engineer)
+  - data/seed_data.json       — owned by Siju
+  - data/question_bank.json   — owned by Siju
+  - gamification/             — owned by Ethan
+  - components/               — owned by Stephen (Frontend Lead)
+
+Code standards to enforce on ALL code you write:
+  1. Strict TypeScript — no `any`, explicit return types on all functions
+  2. Zod for all request body validation in route handlers
+  3. Try/catch with typed error responses on every route
+  4. Consistent API response shape: { success: boolean, data?: T, error?: string }
+  5. Named exports for all utility functions
+  6. JSDoc comments on all exported functions
+  7. No magic strings — use enums or const maps for classifications & subjects
+  8. Use AppError from lib/errors.ts for all thrown errors
+
+## What We're Building
+
+Saber is an AI-powered diagnostic tool that helps teachers understand *why* their English Language Learner (ELL) students are struggling — not just *that* they are. When a student fails a standardized test, Saber re-tests them in Spanish and uses AI to determine whether they missed the question because they didn't understand the material, or because they couldn't understand the English wording of the question.
+
+That distinction changes everything about how a teacher responds.
+
+---
+
+## The Problem
+
+Georgia tests all 108,752 ELL students exclusively in English. When those students fail, teachers have no way to tell whether it's a language problem or a knowledge problem — so most get routed into the same remediation regardless. About 50% of ELL special education referrals may be language-based misidentifications. Each incorrectly placed student costs $13,000–$17,000 per year in unnecessary services. No existing commercial tool uses AI to make this distinction automatically.
+
+---
+
+## How It Works
+
+1. A teacher uploads a CSV of standardized test scores
+2. Saber identifies which questions each student missed
+3. AI (Gemini) generates a Spanish-language equivalent of each missed question
+4. The student retakes those questions in Spanish — typing or speaking into a mic
+5. AI compares the student's English and Spanish responses and classifies each gap
+6. The teacher sees a color-coded dashboard with an AI explanation per student
+7. The student gets a personalized quest line targeting their specific gap type
+
+---
+
+## Gap Types
+
+| Classification | What It Means | What Saber Does |
+|----------------|---------------|-----------------|
+| `LANGUAGE_GAP` | Student knew the content — the English wording blocked them | Routes to English vocabulary and academic language exercises |
+| `CONTENT_GAP` | Student genuinely doesn't understand the subject matter | Routes to targeted subject instruction quests |
+| `MIXED` | Both language and content issues are present | Routes to a combined learning path |
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|------------|
+| Frontend | React (Vite) + Tailwind CSS |
+| Backend | Next.js 14 App Router — TypeScript API Routes |
+| Database | SQLite via `better-sqlite3` |
+| AI / LLM | Google Gemini API (`@google/generative-ai`) |
+| Speech Input | Web Speech API — browser-native, `language: 'es-ES'` |
+| CSV Parsing | papaparse |
+| Validation | Zod |
+| Deployment | Vercel — single repo, single deployment |
+
+---
+
+## Team & Ownership
+
+| Person | Role | Owns |
+|--------|------|------|
+| Stephen | Frontend Lead | Landing page, Teacher Dashboard UI, Student Dashboard UI, all React components |
+| Tylin | Backend Lead | All API routes (`app/api/`), Gemini integration, classification engine, DB query layer |
+| Siju | Data Engineer | Database schema, seed data, question bank (30–40 paired EN/ES questions), sample CSV |
+| Ethan | Gamification + Speech | XP engine, leveling system, leaderboard logic, quest generator, Web Speech API wiring |
+
+---
+
+## Project Structure
+
+```
+saber/
+├── app/
+│   ├── page.tsx                      ← Landing Page (Stephen)
+│   ├── teacher/page.tsx              ← Teacher Dashboard (Stephen)
+│   ├── student/page.tsx              ← Student Dashboard (Stephen)
+│   └── api/                          ← Backend API Routes (Tylin)
+│       ├── upload/route.ts
+│       ├── questions/route.ts
+│       ├── classify/route.ts
+│       ├── answers/route.ts
+│       ├── dashboard/[classId]/route.ts
+│       └── speech/route.ts
+├── components/                       ← Shared UI components (Stephen)
+├── lib/                              ← Backend utilities (Tylin)
+│   ├── db.ts
+│   ├── gemini.ts
+│   ├── classifier.ts
+│   └── errors.ts
+├── data/                             ← Seed data + question bank (Siju)
+│   ├── schema.sql
+│   ├── seed_data.json
+│   ├── question_bank.json
+│   └── sample_upload.csv
+└── gamification/                     ← XP + quest system (Ethan)
+    ├── xp_engine.ts
+    ├── quest_generator.ts
+    └── leaderboard.ts
+```
+
+---
+
+## Key User Flows
+
+### Teacher Flow
+- Logs into teacher dashboard
+- Uploads a CSV of student test scores
+- Views a color-coded class roster: **yellow** = language gap, **red** = content gap, **orange** = mixed, **green** = no gaps
+- Clicks into any student to see a per-skill breakdown and the AI's plain-English explanation
+- Monitors student progress and quest completion in real time
+
+### Student Flow
+- Logs into student dashboard
+- Sees their active quest line and XP progress bar
+- Opens a diagnostic: a question appears in Spanish
+- Types or speaks their answer in Spanish (microphone button)
+- Gets instant feedback, earns XP, and sees their level and leaderboard rank update
+
+---
+
+## Gamification
+
+- **+50 XP** for completing a diagnostic
+- **+30 XP** for completing a quest
+- **+20 XP** for a daily streak
+- Leaderboard ranks by **XP earned this week** — not total XP — so effort beats head start
+- Streak length breaks ties
+
+---
+
+## Demo Script (3–4 min)
+
+| Time | Beat |
+|------|------|
+| 0:00–0:30 | The hook: Georgia ELL stats, the misclassification problem, what Saber uniquely does |
+| 0:30–1:15 | Teacher uploads CSV → dashboard populates → click into "Maria" → AI explanation shown |
+| 1:15–2:15 | Switch to Maria's dashboard → she speaks a Spanish answer → XP awarded → leaderboard updates |
+| 2:15–3:00 | Full-class breakdown: 12 language gaps, 5 content gaps, 3 mixed → targeted interventions |
+| 3:00–3:30 | Close: 5.3M ELL students, 0 existing tools that do this, Saber turns a score into a diagnosis |
+
+---
+
+## Code Standards (All Contributors)
+
+- **TypeScript** — strict mode, no `any`, explicit return types
+- **Response shape** — all API routes return `{ success: boolean, data?: T, error?: string }`
+- **Validation** — Zod on all API request bodies
+- **Error handling** — try/catch on every route, no raw DB or stack trace leaks to client
+- **No magic strings** — use enums or const maps for gap types, subjects, XP actions
+- **JSDoc** on all exported functions
+
+---
+
+*Saber · Vibra ATL 2026 · Team sudo apt-get install sazon*
