@@ -1,0 +1,26 @@
+student_name,question_id,student_answer
+Maria Garcia,MATH-5-001,A
+Maria Garcia,MATH-5-002,C
+Maria Garcia,ELA-5-001,A
+Maria Garcia,SCI-5-001,A
+Maria Garcia,HIST-5-001,A
+Carlos Mendez,MATH-5-001,C
+Carlos Mendez,MATH-5-002,A
+Carlos Mendez,ELA-5-001,C
+Carlos Mendez,SCI-5-001,B
+Carlos Mendez,HIST-5-001,C
+Sofia Ramirez,MATH-5-001,D
+Sofia Ramirez,MATH-5-002,A
+Sofia Ramirez,ELA-5-001,D
+Sofia Ramirez,SCI-5-001,A
+Sofia Ramirez,HIST-5-001,D
+Diego Torres,MATH-5-001,B
+Diego Torres,MATH-5-002,D
+Diego Torres,ELA-5-001,B
+Diego Torres,SCI-5-001,D
+Diego Torres,HIST-5-001,B
+Isabella Lopez,MATH-5-001,C
+Isabella Lopez,MATH-5-002,B
+Isabella Lopez,ELA-5-001,C
+Isabella Lopez,SCI-5-001,C
+Isabella Lopez,HIST-5-001,C

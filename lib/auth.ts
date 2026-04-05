@@ -29,7 +29,7 @@ interface SaberJWTPayload extends JWTPayload {
 }
 
 function getJwtSecret(): Uint8Array {
-  const secret = process.env.JWT_SECRET ?? "saber-dev-secret-change-in-prod";
+  const secret = process.env.JWT_SECRET?.trim() || "saber-dev-secret-change-in-prod";
   return new TextEncoder().encode(secret);
 }
 

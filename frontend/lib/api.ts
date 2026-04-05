@@ -232,6 +232,7 @@ export async function classifyDiagnosticAnswer(input: {
   studentId: number;
   questionId: string;
   answerEs: string;
+  isCorrect?: boolean;
 }): Promise<ClassificationResponseData> {
   return requestJson<ClassificationResponseData>("/api/classify", {
     method: "POST",

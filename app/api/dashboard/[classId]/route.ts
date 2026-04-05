@@ -149,19 +149,24 @@ function mapStudentDiagnosticSummary(
 }
 
 function getColorCode(gapCounts: StudentGapCounts): DashboardColorCode {
-  if (gapCounts.mixed > 0 || (gapCounts.language > 0 && gapCounts.content > 0)) {
-    return DASHBOARD_COLOR_CODES.ORANGE;
+  const { language, content, mixed } = gapCounts;
+
+  // Pure cases
+  if (language === 0 && content === 0 && mixed === 0) {
+    return DASHBOARD_COLOR_CODES.GREEN;
+  }
+  if (content === 0 && mixed === 0) {
+    return DASHBOARD_COLOR_CODES.YELLOW; // Only language gaps
+  }
+  if (language === 0 && mixed === 0) {
+    return DASHBOARD_COLOR_CODES.RED; // Only content gaps
   }
 
-  if (gapCounts.language > 0 && gapCounts.content === 0) {
-    return DASHBOARD_COLOR_CODES.YELLOW;
+  // Mixed: use dominant gap type to determine color
+  if (language >= content) {
+    return DASHBOARD_COLOR_CODES.YELLOW; // Language is dominant — show as language barrier
   }
-
-  if (gapCounts.content > 0 && gapCounts.language === 0) {
-    return DASHBOARD_COLOR_CODES.RED;
-  }
-
-  return DASHBOARD_COLOR_CODES.GREEN;
+  return DASHBOARD_COLOR_CODES.RED; // Content is dominant
 }
 
 function buildClassStats(

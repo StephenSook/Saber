@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { X, Check, Trophy, ArrowLeft, Lightbulb } from "lucide-react";
+import LanguageToggle from "@/components/ui/LanguageToggle";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import XPAnimation from "@/components/XPAnimation";
@@ -258,11 +259,12 @@ export default function QuestView() {
         >
           <X className="h-5 w-5" />
         </Link>
-        <div>
+        <div className="flex items-center gap-3">
           <span className="text-lg font-bold text-teal">Saber</span>
-          <span className="ml-3 text-sm text-gray-400">
+          <span className="text-sm text-gray-400">
             {quest?.skillTag ?? t("quest.masterMath")}
           </span>
+          <LanguageToggle />
         </div>
         <div className="flex items-center gap-3">
           <div className="h-2 w-32 overflow-hidden rounded-full bg-gray-100">
@@ -284,20 +286,21 @@ export default function QuestView() {
           </p>
 
           <h2 className="mb-2 text-center text-2xl font-bold leading-snug text-navy">
-            {question.questionEs}
+            {lang === "es" ? question.questionEs : question.questionEn}
           </h2>
           <p className="mb-8 text-center text-sm italic text-gray-400">
-            {question.questionEn}
+            {lang === "es" ? question.questionEn : question.questionEs}
           </p>
 
           <div className="relative mb-6 grid grid-cols-2 gap-3">
             <XPAnimation xp={30} show={showXP} />
 
-            {(question.choicesEs ?? []).map((choice, index) => {
+            {(lang === "es" ? (question.choicesEs ?? []) : (question.choicesEn ?? [])).map((choice, index) => {
               const isSelected = selectedAnswer === index;
               const correctChoiceIndex = getChoiceIndex(question.correctAnswer);
               const isCorrect = feedback && index === correctChoiceIndex;
               const isWrong = feedback && isSelected && index !== correctChoiceIndex;
+              const subtitleChoices = lang === "es" ? question.choicesEn : question.choicesEs;
 
               return (
                 <button
@@ -319,7 +322,7 @@ export default function QuestView() {
                   </span>
                   <span className="text-sm font-medium text-navy">{choice}</span>
                   <span className="mt-0.5 text-xs text-gray-400">
-                    {question.choicesEn?.[index]}
+                    {subtitleChoices?.[index]}
                   </span>
                   {(isSelected && !feedback) || isCorrect ? (
                     <div className="absolute right-3 top-3">

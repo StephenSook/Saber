@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI, type GenerativeModel } from "@google/generative-ai";
+import OpenAI from "openai";
 import { z } from "zod";
 
 import { AppError } from "./errors";
@@ -143,11 +143,7 @@ export interface QuestionExplanation {
   languageTip: string | null;
 }
 
-const DEFAULT_MODEL_NAME = "gemini-1.5-flash";
-const JSON_GENERATION_CONFIG = {
-  responseMimeType: "application/json",
-  temperature: 0.2,
-} as const;
+const DEFAULT_MODEL_NAME = "gpt-4o-mini";
 
 const spanishQuestionSchema: z.ZodType<SpanishQuestion> = z
   .object({
@@ -193,7 +189,7 @@ const questionExplanationSchema: z.ZodType<QuestionExplanation> = z
   })
   .strict();
 
-let sharedModel: GenerativeModel | null = null;
+let sharedClient: OpenAI | null = null;
 
 /**
  * Generates a Spanish equivalent of the provided English question.
@@ -328,9 +324,9 @@ function buildPrompt(template: string, variables: Record<string, string>): strin
   return [prompts.sharedJsonRules, populatedTemplate].join("\n\n");
 }
 
-function getSharedModel(): GenerativeModel {
-  if (sharedModel !== null) {
-    return sharedModel;
+function getSharedClient(): OpenAI {
+  if (sharedClient !== null) {
+    return sharedClient;
   }
 
   const apiKey = process.env.GEMINI_API_KEY?.trim();
@@ -342,35 +338,38 @@ function getSharedModel(): GenerativeModel {
     });
   }
 
-  const modelName = process.env.GEMINI_MODEL?.trim() || DEFAULT_MODEL_NAME;
-  const client = new GoogleGenerativeAI(apiKey);
-
-  sharedModel = client.getGenerativeModel({ model: modelName });
-
-  return sharedModel;
+  sharedClient = new OpenAI({ apiKey });
+  return sharedClient;
 }
 
 async function requestStructuredJson<T>(
   promptText: string,
   schema: z.ZodType<T>,
 ): Promise<T> {
-  const model = getSharedModel();
-  const result = await model.generateContent({
-    contents: [
-      {
-        role: "user",
-        parts: [{ text: promptText }],
-      },
-    ],
-    generationConfig: JSON_GENERATION_CONFIG,
+  const client = getSharedClient();
+  const modelName = process.env.GEMINI_MODEL?.trim() || DEFAULT_MODEL_NAME;
+
+  const completion = await client.chat.completions.create({
+    model: modelName,
+    temperature: 0.2,
+    response_format: { type: "json_object" },
+    messages: [{ role: "user", content: promptText }],
   });
 
-  const responseText = extractResponseText(result);
+  const responseText = completion.choices[0]?.message?.content?.trim();
+
+  if (!responseText) {
+    throw new AppError("OpenAI returned an empty response.", {
+      statusCode: 503,
+      code: "GEMINI_EMPTY_RESPONSE_TEXT",
+    });
+  }
+
   const parsedPayload = parseJsonPayload(responseText);
   const validationResult = schema.safeParse(parsedPayload);
 
   if (!validationResult.success) {
-    throw new AppError("Gemini returned an invalid response shape.", {
+    throw new AppError("OpenAI returned an invalid response shape.", {
       statusCode: 503,
       code: "GEMINI_INVALID_RESPONSE",
       cause: validationResult.error,
@@ -378,44 +377,6 @@ async function requestStructuredJson<T>(
   }
 
   return validationResult.data;
-}
-
-function extractResponseText(result: unknown): string {
-  if (typeof result !== "object" || result === null || !("response" in result)) {
-    throw new AppError("Gemini returned an empty result.", {
-      statusCode: 503,
-      code: "GEMINI_EMPTY_RESULT",
-    });
-  }
-
-  const { response } = result;
-
-  if (typeof response !== "object" || response === null || !("text" in response)) {
-    throw new AppError("Gemini did not provide a readable response.", {
-      statusCode: 503,
-      code: "GEMINI_MISSING_RESPONSE_TEXT",
-    });
-  }
-
-  const responseText = response.text;
-
-  if (typeof responseText !== "function") {
-    throw new AppError("Gemini response text accessor is invalid.", {
-      statusCode: 503,
-      code: "GEMINI_INVALID_RESPONSE_TEXT_ACCESSOR",
-    });
-  }
-
-  const textValue = responseText.call(response);
-
-  if (typeof textValue !== "string" || textValue.trim().length === 0) {
-    throw new AppError("Gemini returned an empty response body.", {
-      statusCode: 503,
-      code: "GEMINI_EMPTY_RESPONSE_TEXT",
-    });
-  }
-
-  return textValue.trim();
 }
 
 function parseJsonPayload(responseText: string): unknown {
@@ -459,18 +420,13 @@ export async function probeGeminiHealth(): Promise<"ok" | "error"> {
   }
 
   try {
-    const model = getSharedModel();
-    await model.generateContent({
-      contents: [
-        {
-          role: "user",
-          parts: [{ text: "Reply with the single letter: A" }],
-        },
-      ],
-      generationConfig: {
-        maxOutputTokens: 8,
-        temperature: 0,
-      },
+    const client = getSharedClient();
+    const modelName = process.env.GEMINI_MODEL?.trim() || DEFAULT_MODEL_NAME;
+    await client.chat.completions.create({
+      model: modelName,
+      temperature: 0,
+      max_tokens: 8,
+      messages: [{ role: "user", content: "Reply with the single letter: A" }],
     });
 
     return "ok";

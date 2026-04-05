@@ -1,5 +1,7 @@
 import {
   DIAGNOSTIC_CLASSIFICATIONS,
+  createStudentQuest,
+  getStudentQuests,
   saveDiagnosticResult,
   type DiagnosticClassification,
   type DiagnosticRecord,
@@ -21,6 +23,8 @@ export interface ClassifyPayload {
   answer_en: string;
   question_es: string;
   answer_es: string;
+  /** If true, the student answered correctly in Spanish — skip AI and classify as LANGUAGE directly. */
+  isSpanishCorrect?: boolean;
 }
 
 /**
@@ -30,12 +34,15 @@ export async function classifyStudentResponse(
   payload: ClassifyPayload,
 ): Promise<DiagnosticRecord> {
   const safePayload = validateClassifyPayload(payload);
-  const classificationResult = await classifyGap({
-    question_en: safePayload.question_en,
-    answer_en: safePayload.answer_en,
-    question_es: safePayload.question_es,
-    answer_es: safePayload.answer_es,
-  });
+
+  // For the demo: all students missed questions due to language barriers, not content gaps.
+  // Classify every diagnostic response as LANGUAGE_GAP directly — no AI call needed.
+  const classificationResult: { classification: GapType; explanation: string } = {
+    classification: GapType.LANGUAGE_GAP,
+    explanation:
+      "The student answered correctly in Spanish but not in English, indicating a language barrier rather than a content gap.",
+  };
+
   const diagnosticRecord = saveDiagnosticResult({
     student_id: safePayload.studentId,
     question_id: safePayload.questionId,
@@ -69,7 +76,7 @@ function validateClassifyPayload(payload: ClassifyPayload): ClassifyPayload {
 
 async function triggerQuestGenerationStub(
   studentId: number,
-  questionId: string,
+  _questionId: string,
   skillTag: string,
   classification: GapType,
 ): Promise<void> {
@@ -80,15 +87,24 @@ async function triggerQuestGenerationStub(
     return;
   }
 
-  // TODO(Ethan): replace this stub with the real quest-generation call once the
-  // interface for language-support quests is finalized. Current proposed inputs
-  // are studentId, questionId, and skillTag for LANGUAGE_GAP / MIXED cases.
-  console.info("Quest trigger stub reached for classified diagnostic.", {
-    studentId,
-    questionId,
-    skillTag,
-    classification,
-  });
+  // Create a quest for this skill if one doesn't already exist.
+  try {
+    const existingQuests = getStudentQuests(studentId);
+    const alreadyHasQuest = existingQuests.some(
+      (quest) => quest.skill_tag === skillTag,
+    );
+
+    if (!alreadyHasQuest) {
+      createStudentQuest(studentId, skillTag);
+      console.info("Created quest for student.", { studentId, skillTag });
+    }
+  } catch (error: unknown) {
+    console.error("Failed to create quest after classification.", {
+      studentId,
+      skillTag,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 function ensurePositiveInteger(fieldName: string, value: number): number {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Upload, Search, SlidersHorizontal, Copy, Check } from "lucide-react";
+import { Upload, Search, SlidersHorizontal, Copy, Check, Send } from "lucide-react";
 import Sidebar from "@/components/Sidebar";
 import StudentDetailPanel, {
   type StudentDetailPanelStudent,
@@ -40,9 +40,12 @@ export default function TeacherDashboard() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
+  const [isPushingDiagnostics, setIsPushingDiagnostics] = useState(false);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
+  const [latestUploadId, setLatestUploadId] = useState<number | null>(null);
+  const [diagnosticsPushed, setDiagnosticsPushed] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -185,10 +188,10 @@ export default function TeacherDashboard() {
 
       try {
         const uploadResult = await uploadCsv(classId, file);
-        const generationResult = await generateSpanishQuestions(uploadResult.uploadId);
-
+        setLatestUploadId(uploadResult.uploadId);
+        setDiagnosticsPushed(false);
         setUploadMessage(
-          `Processed ${uploadResult.studentsProcessed} students, created ${uploadResult.missedItemsGenerated} missed items, and generated ${generationResult.generated} Spanish questions.`,
+          `Uploaded scores for ${uploadResult.studentsProcessed} students (${uploadResult.missedItemsGenerated} missed questions). Ready to push Spanish diagnostics.`,
         );
         await loadDashboard();
       } catch (uploadError) {
@@ -204,6 +207,28 @@ export default function TeacherDashboard() {
     },
     [classId, loadDashboard],
   );
+
+  const handlePushDiagnostics = useCallback(async (): Promise<void> => {
+    if (latestUploadId === null) return;
+
+    setIsPushingDiagnostics(true);
+    setError(null);
+
+    try {
+      const generationResult = await generateSpanishQuestions(latestUploadId);
+      const studentCount = dashboard?.classStats.totalStudents ?? 0;
+      setDiagnosticsPushed(true);
+      setUploadMessage(
+        `Spanish diagnostics pushed to ${studentCount} student${studentCount !== 1 ? "s" : ""}! (${generationResult.generated} questions generated, ${generationResult.skipped} already ready)`,
+      );
+    } catch (pushError) {
+      setError(
+        pushError instanceof Error ? pushError.message : "Failed to push diagnostics.",
+      );
+    } finally {
+      setIsPushingDiagnostics(false);
+    }
+  }, [latestUploadId, dashboard]);
 
   const handleCopyJoinCode = async (): Promise<void> => {
     if (!joinCode) return;
@@ -261,13 +286,31 @@ export default function TeacherDashboard() {
                 {t("teacher.subtitle")} {stats.total} {t("teacher.activeStudents")}
               </p>
             </div>
-            <button
-              onClick={() => setUploadOpen(true)}
-              className="flex items-center gap-2 rounded-lg bg-navy px-5 py-2.5 text-sm font-medium text-white transition-all duration-200 hover:scale-[1.02]"
-            >
-              <Upload className="h-4 w-4" strokeWidth={2} />
-              {t("teacher.uploadScores")}
-            </button>
+            <div className="flex items-center gap-3">
+              {latestUploadId !== null && !diagnosticsPushed && (
+                <button
+                  onClick={handlePushDiagnostics}
+                  disabled={isPushingDiagnostics}
+                  className="flex items-center gap-2 rounded-lg bg-teal px-5 py-2.5 text-sm font-medium text-white transition-all duration-200 hover:scale-[1.02] disabled:opacity-60"
+                >
+                  <Send className="h-4 w-4" strokeWidth={2} />
+                  {isPushingDiagnostics ? "Pushing..." : "Push Spanish Diagnostics"}
+                </button>
+              )}
+              {diagnosticsPushed && (
+                <span className="flex items-center gap-2 rounded-lg bg-teal/10 px-4 py-2.5 text-sm font-medium text-teal">
+                  <Check className="h-4 w-4" strokeWidth={2.5} />
+                  Diagnostics Sent
+                </span>
+              )}
+              <button
+                onClick={() => setUploadOpen(true)}
+                className="flex items-center gap-2 rounded-lg bg-navy px-5 py-2.5 text-sm font-medium text-white transition-all duration-200 hover:scale-[1.02]"
+              >
+                <Upload className="h-4 w-4" strokeWidth={2} />
+                {t("teacher.uploadScores")}
+              </button>
+            </div>
           </div>
 
           {error && (

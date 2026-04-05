@@ -18,6 +18,7 @@ const requestBodySchema = z.object({
   ),
   questionId: z.string().trim().min(1),
   answerEs: z.string().trim().min(1),
+  isCorrect: z.boolean().optional(),
 });
 
 type ClassifyRouteRequestBody = z.infer<typeof requestBodySchema>;
@@ -46,6 +47,7 @@ export async function POST(request: Request): Promise<Response> {
       answer_en: answerEn,
       question_es: questionEs,
       answer_es: payload.answerEs,
+      isSpanishCorrect: payload.isCorrect === true,
     });
 
     return jsonSuccess(diagnosticRecord);

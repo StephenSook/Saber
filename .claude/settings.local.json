@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(///wsl.localhost/Ubuntu/home/siju/**)",
+      "Read(//c/Users/sijuo/**)",
+      "Read(//mnt/c/Users/sijuo/**)"
+    ]
+  }
+}

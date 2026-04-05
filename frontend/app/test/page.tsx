@@ -142,6 +142,7 @@ export default function DiagnosticTest() {
             studentId,
             questionId: question.id,
             answerEs,
+            isCorrect: answerResult.correct,
           });
           explanation = classificationResult.explanation;
           latestClassification = classificationResult.classification;
