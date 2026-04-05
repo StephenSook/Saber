@@ -311,6 +311,12 @@ const getClassByIdStatement = db.prepare(`
   WHERE id = ?
 `);
 
+const getQuestionByIdStatement = db.prepare(`
+  SELECT id, subject, grade, skill_tag, question_type, question_en, question_es, choices_en, choices_es, correct_answer
+  FROM questions
+  WHERE id = ?
+`);
+
 const getStudentsByClassStatement = db.prepare(`
   SELECT id, class_id, name, xp, level, streak_days, last_active
   FROM students
@@ -469,6 +475,12 @@ const getUploadByIdStatement = db.prepare(`
 const updateStudentXPStatement = db.prepare(`
   UPDATE students
   SET xp = ?, level = ?, last_active = ?
+  WHERE id = ?
+`);
+
+const updateQuestionSpanishContentStatement = db.prepare(`
+  UPDATE questions
+  SET question_es = ?, choices_es = ?
   WHERE id = ?
 `);
 
@@ -1073,6 +1085,13 @@ function getUploadByIdOrThrow(uploadId: number): Upload {
   return requireRow(row, parseUploadRow, `Upload ${uploadId} was not found.`);
 }
 
+function getQuestionByIdOrThrow(questionId: string): Question {
+  const safeQuestionId = ensureNonEmptyString("question_id", questionId);
+  const row = getQuestionByIdStatement.get(safeQuestionId) as unknown;
+
+  return requireRow(row, parseQuestionRow, `Question ${safeQuestionId} was not found.`);
+}
+
 const insertMissedItemsTransaction = db.transaction(
   (items: MissedItemInsert[]): void => {
     for (const item of items) {
@@ -1212,6 +1231,37 @@ export function getMissedItemsByUpload(uploadId: number): MissedItemWithQuestion
       error,
       "Failed to load missed items for the upload.",
       "DB_GET_MISSED_ITEMS_BY_UPLOAD_FAILED",
+    );
+  }
+}
+
+/**
+ * Updates the stored Spanish question content and returns the saved question row.
+ */
+export function updateQuestionSpanishContent(data: {
+  question_id: string;
+  question_es: string;
+  choices_es: string[] | null;
+}): Question {
+  try {
+    const safeQuestionId = ensureNonEmptyString("question_id", data.question_id);
+    const safeQuestionEs = ensureNonEmptyString("question_es", data.question_es);
+    const safeChoicesEs = data.choices_es?.map((choice: string) =>
+      ensureNonEmptyString("choices_es", choice),
+    ) ?? null;
+
+    updateQuestionSpanishContentStatement.run(
+      safeQuestionEs,
+      safeChoicesEs === null ? null : JSON.stringify(safeChoicesEs),
+      safeQuestionId,
+    );
+
+    return getQuestionByIdOrThrow(safeQuestionId);
+  } catch (error: unknown) {
+    throw wrapDatabaseError(
+      error,
+      "Failed to update the Spanish question content.",
+      "DB_UPDATE_QUESTION_SPANISH_CONTENT_FAILED",
     );
   }
 }
