@@ -355,6 +355,30 @@ const getMissedItemsByUploadStatement = db.prepare(`
   ORDER BY mi.student_id ASC, mi.id ASC
 `);
 
+const getLatestMissedItemByStudentAndQuestionStatement = db.prepare(`
+  SELECT
+    mi.id AS missed_item_id,
+    mi.upload_id AS missed_item_upload_id,
+    mi.student_id AS missed_item_student_id,
+    mi.question_id AS missed_item_question_id,
+    mi.student_answer_en AS missed_item_student_answer_en,
+    q.id AS question_id,
+    q.subject AS question_subject,
+    q.grade AS question_grade,
+    q.skill_tag AS question_skill_tag,
+    q.question_type AS question_type,
+    q.question_en AS question_en,
+    q.question_es AS question_es,
+    q.choices_en AS question_choices_en,
+    q.choices_es AS question_choices_es,
+    q.correct_answer AS question_correct_answer
+  FROM missed_items mi
+  INNER JOIN questions q ON q.id = mi.question_id
+  WHERE mi.student_id = ? AND mi.question_id = ?
+  ORDER BY mi.id DESC
+  LIMIT 1
+`);
+
 const insertDiagnosticStatement = db.prepare(`
   INSERT INTO diagnostics (
     student_id,
@@ -1231,6 +1255,35 @@ export function getMissedItemsByUpload(uploadId: number): MissedItemWithQuestion
       error,
       "Failed to load missed items for the upload.",
       "DB_GET_MISSED_ITEMS_BY_UPLOAD_FAILED",
+    );
+  }
+}
+
+/**
+ * Returns the latest missed item for a student/question pair with the related question data.
+ */
+export function getLatestMissedItemByStudentAndQuestion(
+  studentId: number,
+  questionId: string,
+): MissedItemWithQuestion {
+  try {
+    const safeStudentId = ensurePositiveInteger("studentId", studentId);
+    const safeQuestionId = ensureNonEmptyString("questionId", questionId);
+    const row = getLatestMissedItemByStudentAndQuestionStatement.get(
+      safeStudentId,
+      safeQuestionId,
+    ) as unknown;
+
+    return requireRow(
+      row,
+      parseMissedItemWithQuestionRow,
+      `Missed item for student ${safeStudentId} and question ${safeQuestionId} was not found.`,
+    );
+  } catch (error: unknown) {
+    throw wrapDatabaseError(
+      error,
+      "Failed to load the student's missed item context.",
+      "DB_GET_MISSED_ITEM_CONTEXT_FAILED",
     );
   }
 }
