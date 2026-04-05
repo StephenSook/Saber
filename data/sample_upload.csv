@@ -1,0 +1,49 @@
+# SaberReal Teacher Upload Template
+# Format: one row per missed question per student
+# question_id must match an ID in the question bank (e.g. MATH-5-001)
+# student_answer is what the student selected or wrote on the test
+# Remove these comment lines before uploading
+student_name,question_id,student_answer
+Maria Garcia,MATH-5-001,A
+Maria Garcia,MATH-5-002,C
+Maria Garcia,MATH-5-003,A
+Maria Garcia,MATH-5-004,The train travels 120 miles
+Carlos Mendez,ELA-5-001,A
+Carlos Mendez,ELA-5-002,A
+Carlos Mendez,ELA-5-003,The character was brave
+Sofia Ramirez,MATH-5-002,A
+Sofia Ramirez,MATH-5-003,C
+Diego Torres,SCI-5-001,A
+Diego Torres,SCI-5-002,B
+Isabella Lopez,MATH-5-001,C
+Isabella Lopez,ELA-5-001,C
+Mateo Flores,HIST-5-001,A
+Mateo Flores,HIST-5-002,C
+Valentina Cruz,MATH-5-003,A
+Valentina Cruz,MATH-5-004,The train travels 90 miles
+Lucas Morales,ELA-5-001,C
+Lucas Morales,ELA-5-003,The character never gave up once
+Camila Reyes,SCI-5-001,A
+Camila Reyes,MATH-5-002,D
+Alejandro Sanchez,HIST-5-001,C
+Alejandro Sanchez,SCI-5-002,B
+Ana Gutierrez,MATH-5-001,D
+Ana Gutierrez,HIST-5-002,A
+Rosa Hernandez,ELA-5-002,A
+Rosa Hernandez,SCI-5-001,C
+Emma Johnson,MATH-5-002,A
+Emma Johnson,MATH-5-003,D
+Noah Williams,SCI-5-001,D
+Noah Williams,SCI-5-002,A
+Olivia Brown,ELA-5-001,D
+Olivia Brown,ELA-5-002,C
+Liam Davis,MATH-5-001,D
+Liam Davis,SCI-5-001,C
+Ava Martinez,HIST-5-001,C
+Ava Martinez,ELA-5-001,D
+Mia Rodriguez,MATH-5-001,A
+Mia Rodriguez,MATH-5-002,C
+James Wilson,ELA-5-001,C
+James Wilson,SCI-5-001,D
+Ethan Thomas,MATH-5-003,C
+Ethan Thomas,HIST-5-001,A
