@@ -1,0 +1,131 @@
+"use client";
+
+import { X, Lightbulb, Calendar } from "lucide-react";
+import { Student, getInitials, getInitialsBgColor, getClassificationColor } from "@/lib/mockData";
+import { useLanguage } from "@/components/LanguageProvider";
+
+interface StudentDetailPanelProps {
+  student: Student;
+  onClose: () => void;
+}
+
+export default function StudentDetailPanel({
+  student,
+  onClose,
+}: StudentDetailPanelProps) {
+  const { t } = useLanguage();
+  const initials = getInitials(student.name);
+  const bgColor = getInitialsBgColor(student.name);
+  const classInfo = getClassificationColor(student.classification);
+
+  return (
+    <div className="sticky top-0 flex h-screen w-80 flex-col border-l border-gray-100 bg-white">
+      {/* Header */}
+      <div className="flex items-start justify-between p-5 pb-4">
+        <div className="flex items-center gap-3">
+          <div
+            className={`flex h-11 w-11 items-center justify-center rounded-full text-sm font-bold text-white ${bgColor}`}
+          >
+            {initials}
+          </div>
+          <div>
+            <h3 className="text-base font-bold text-navy">{student.name}</h3>
+            <span
+              className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${classInfo.bg} ${classInfo.text}`}
+            >
+              {classInfo.label}
+            </span>
+          </div>
+        </div>
+        <button
+          onClick={onClose}
+          className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      {/* Skills Mastery */}
+      <div className="flex-1 overflow-y-auto px-5">
+        <h4 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-400">
+          {t("detail.skillsMastery")}
+          <span className="float-right normal-case tracking-normal text-gray-300">
+            {t("detail.masteryLevel")}
+          </span>
+        </h4>
+
+        <div className="space-y-4">
+          {student.skills.length > 0 ? (
+            student.skills.map((skill, skillIndex) => {
+              const skillColor = getClassificationColor(skill.classification);
+              const seed = skill.name.length + skillIndex;
+              const mastery =
+                skill.classification === "language"
+                  ? 65 + (seed % 20)
+                  : skill.classification === "content"
+                    ? 25 + (seed % 20)
+                    : skill.classification === "ontrack"
+                      ? 85 + (seed % 10)
+                      : 45 + (seed % 15);
+
+              return (
+                <div key={skill.name}>
+                  <div className="mb-1 flex items-center justify-between">
+                    <span className="text-sm font-medium text-navy">
+                      {skill.name}
+                    </span>
+                    <span className="text-xs text-gray-400">{mastery}%</span>
+                  </div>
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-gray-100">
+                    <div
+                      className={`h-full rounded-full ${skillColor.bg} transition-all duration-600`}
+                      style={{ width: `${mastery}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })
+          ) : (
+            <p className="text-sm text-gray-400">{t("detail.noSkills")}</p>
+          )}
+        </div>
+
+        {/* Coach's Insight */}
+        {student.skills.length > 0 && (
+          <div className="mt-6 rounded-xl bg-gold/10 p-4">
+            <div className="mb-2 flex items-center gap-2">
+              <Lightbulb className="h-4 w-4 text-gold" strokeWidth={2} />
+              <span className="text-sm font-semibold text-navy">
+                {t("detail.coachInsight")}
+              </span>
+            </div>
+            <p className="text-sm leading-relaxed text-gray-600">
+              {student.skills[0].explanation}
+            </p>
+          </div>
+        )}
+
+        {/* Class Milestones */}
+        <div className="mt-6 mb-4">
+          <h4 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-400">
+            {t("detail.classMilestones")}
+          </h4>
+          <div className="flex items-center gap-3 rounded-lg border border-gray-100 p-3">
+            <Calendar className="h-5 w-5 text-gray-300" strokeWidth={1.5} />
+            <div>
+              <p className="text-sm font-medium text-navy">{t("detail.midTerm")}</p>
+              <p className="text-xs text-gray-400">{t("detail.today")}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Assign Practice Button */}
+      <div className="border-t border-gray-100 p-4">
+        <button className="w-full rounded-lg bg-coral px-4 py-3 text-sm font-semibold text-white transition-all duration-200 hover:scale-[1.02] hover:bg-coral/90">
+          {t("detail.assignPractice")}
+        </button>
+      </div>
+    </div>
+  );
+}

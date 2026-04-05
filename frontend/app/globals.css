@@ -1,0 +1,134 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-teal: #2A9D8F;
+  --color-teal-light: #e6f5f3;
+  --color-coral: #E07A5F;
+  --color-coral-light: #fdf0ec;
+  --color-gold: #F2CC8F;
+  --color-gold-light: #fdf6e8;
+  --color-offwhite: #F5F0EB;
+  --color-navy: #264653;
+  --color-card: #FFFFFF;
+  --color-success: #81B29A;
+  --color-success-light: #edf5f1;
+  --color-warning: #F4A261;
+  --color-warning-light: #fef3e6;
+  --color-error: #E07A5F;
+
+  --font-sans: "DM Sans", sans-serif;
+}
+
+body {
+  background: var(--color-offwhite);
+  color: var(--color-navy);
+  font-family: var(--font-sans);
+}
+
+/* XP gain animation — floats up and fades */
+@keyframes xp-float {
+  0% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-40px);
+  }
+}
+
+/* Level up celebration — scale + gold glow */
+@keyframes level-up {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 rgba(242, 204, 143, 0);
+  }
+  50% {
+    transform: scale(1.2);
+    box-shadow: 0 0 24px rgba(242, 204, 143, 0.6);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 rgba(242, 204, 143, 0);
+  }
+}
+
+/* Correct answer flash */
+@keyframes correct-flash {
+  0% {
+    background-color: var(--color-success);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+/* Mic recording pulse */
+@keyframes mic-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(224, 122, 95, 0.5);
+  }
+  70% {
+    box-shadow: 0 0 0 12px rgba(224, 122, 95, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(224, 122, 95, 0);
+  }
+}
+
+.animate-xp-float {
+  animation: xp-float 1s ease-out forwards;
+}
+
+.animate-level-up {
+  animation: level-up 1s ease-in-out;
+}
+
+.animate-correct-flash {
+  animation: correct-flash 0.5s ease-out;
+}
+
+.animate-mic-pulse {
+  animation: mic-pulse 1.5s ease-in-out infinite;
+}
+
+/* Language toggle — animated gradient border */
+.lang-indicator {
+  isolation: isolate;
+}
+
+.lang-indicator::before,
+.lang-indicator::after {
+  content: '';
+  position: absolute;
+  left: -2px;
+  top: -2px;
+  border-radius: 9999px;
+  background: linear-gradient(
+    45deg,
+    #2A9D8F,
+    #E07A5F,
+    #F2CC8F,
+    #81B29A,
+    #264653,
+    #2A9D8F,
+    #E07A5F,
+    #F2CC8F
+  );
+  background-size: 400%;
+  width: calc(100% + 4px);
+  height: calc(100% + 4px);
+  z-index: -1;
+  animation: lang-gradient 6s linear infinite;
+}
+
+.lang-indicator::after {
+  filter: blur(10px);
+  opacity: 0.5;
+}
+
+@keyframes lang-gradient {
+  0% { background-position: 0 0; }
+  50% { background-position: 400% 0; }
+  100% { background-position: 0 0; }
+}
