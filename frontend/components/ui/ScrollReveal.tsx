@@ -1,7 +1,6 @@
 "use client";
 
-import { useRef } from "react";
-import { motion, useScroll, useTransform } from "framer-motion";
+import { motion } from "framer-motion";
 
 interface ScrollRevealProps {
   children: React.ReactNode;
@@ -10,7 +9,6 @@ interface ScrollRevealProps {
   distance?: number;
   scaleFrom?: number;
   rotate?: number;
-  once?: boolean;
 }
 
 export function ScrollReveal({
@@ -21,43 +19,22 @@ export function ScrollReveal({
   scaleFrom,
   rotate: rotateDeg,
 }: ScrollRevealProps) {
-  const ref = useRef<HTMLDivElement>(null);
-  const { scrollYProgress } = useScroll({
-    target: ref,
-    offset: ["0 1.1", "0.4 1"],
-  });
+  const initial: Record<string, number> = { opacity: 0 };
+  const animate: Record<string, number> = { opacity: 1, scale: 1, rotate: 0, x: 0, y: 0 };
 
-  const opacity = useTransform(scrollYProgress, [0, 1], [0, 1]);
-
-  const y = useTransform(
-    scrollYProgress,
-    [0, 1],
-    [direction === "up" ? distance : 0, 0]
-  );
-
-  const x = useTransform(
-    scrollYProgress,
-    [0, 1],
-    [direction === "left" ? -distance : direction === "right" ? distance : 0, 0]
-  );
-
-  const scale = useTransform(
-    scrollYProgress,
-    [0, 1],
-    [scaleFrom ?? 1, 1]
-  );
-
-  const rotateVal = useTransform(
-    scrollYProgress,
-    [0, 1],
-    [rotateDeg ?? 0, 0]
-  );
+  if (direction === "up") initial.y = distance;
+  else if (direction === "left") initial.x = -distance;
+  else if (direction === "right") initial.x = distance;
+  if (scaleFrom !== undefined) initial.scale = scaleFrom;
+  if (rotateDeg !== undefined) initial.rotate = rotateDeg;
 
   return (
     <motion.div
-      ref={ref}
-      style={{ opacity, y, x, scale, rotate: rotateVal }}
       className={className}
+      initial={initial}
+      whileInView={animate}
+      viewport={{ once: true, margin: "-50px" }}
+      transition={{ duration: 0.6, ease: "easeOut" }}
     >
       {children}
     </motion.div>
@@ -73,24 +50,13 @@ export function ScrollStagger({
   className?: string;
   staggerIndex?: number;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const { scrollYProgress } = useScroll({
-    target: ref,
-    offset: ["0 1.1", "0.5 1"],
-  });
-
-  const start = staggerIndex * 0.15;
-  const end = start + 0.6;
-
-  const opacity = useTransform(scrollYProgress, [start, end], [0, 1]);
-  const y = useTransform(scrollYProgress, [start, end], [50, 0]);
-  const scale = useTransform(scrollYProgress, [start, end], [0.95, 1]);
-
   return (
     <motion.div
-      ref={ref}
-      style={{ opacity, y, scale }}
       className={className}
+      initial={{ opacity: 0, y: 40, scale: 0.97 }}
+      whileInView={{ opacity: 1, y: 0, scale: 1 }}
+      viewport={{ once: true, margin: "-50px" }}
+      transition={{ duration: 0.5, ease: "easeOut", delay: staggerIndex * 0.12 }}
     >
       {children}
     </motion.div>

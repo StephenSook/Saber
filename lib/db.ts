@@ -693,6 +693,11 @@ const getLatestStudentDiagnosticQuestionsStatement = db.prepare(`
   ORDER BY mi.id ASC
 `);
 
+const insertQuestStatement = db.prepare(`
+  INSERT INTO quests (student_id, skill_tag, difficulty, status, xp_reward)
+  VALUES (?, ?, 'medium', 'active', 30)
+`);
+
 const insertStudentStatement = db.prepare(`
   INSERT INTO students (class_id, name, email, password_hash, xp, level, streak_days, last_active)
   VALUES (?, ?, NULL, NULL, ?, ?, ?, ?)
@@ -2122,6 +2127,19 @@ export function getStudentSkillSummaries(studentId: number): StudentSkillSummary
       "Failed to load the student's skill summaries.",
       "DB_GET_STUDENT_SKILL_SUMMARIES_FAILED",
     );
+  }
+}
+
+/**
+ * Creates an active quest for a student on a given skill tag.
+ */
+export function createStudentQuest(studentId: number, skillTag: string): number {
+  try {
+    const safeStudentId = ensurePositiveInteger("studentId", studentId);
+    const result = insertQuestStatement.run(safeStudentId, skillTag) as { lastInsertRowid: number };
+    return result.lastInsertRowid;
+  } catch (error: unknown) {
+    throw wrapDatabaseError(error, "Failed to create quest.", "DB_CREATE_QUEST_FAILED");
   }
 }
 

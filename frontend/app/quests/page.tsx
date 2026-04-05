@@ -76,18 +76,17 @@ export default function QuestView() {
   }, [profile, questId]);
 
   const questions = useMemo(() => {
-    const pendingQuestions =
-      diagnostic?.questions.filter((question) => !question.isCompleted) ?? [];
+    const allQuestions = diagnostic?.questions ?? [];
 
     if (quest === null) {
-      return pendingQuestions.slice(0, 4);
+      return allQuestions.slice(0, 4);
     }
 
-    const matchingQuestions = pendingQuestions.filter((question) => {
+    const matchingQuestions = allQuestions.filter((question) => {
       return question.skillTag === quest.skillTag;
     });
 
-    return (matchingQuestions.length > 0 ? matchingQuestions : pendingQuestions).slice(0, 4);
+    return (matchingQuestions.length > 0 ? matchingQuestions : allQuestions).slice(0, 4);
   }, [diagnostic, quest]);
 
   const question = questions[currentIndex];
@@ -180,8 +179,9 @@ export default function QuestView() {
           responseLang: lang === "es" ? "es" : "en",
         });
         setAiExplanation(result);
-      } catch {
+      } catch (explainError) {
         setAiExplanation(null);
+        setError(explainError instanceof Error ? explainError.message : "Could not load the explanation. Try again.");
       } finally {
         setIsExplaining(false);
       }

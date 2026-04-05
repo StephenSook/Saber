@@ -30,7 +30,7 @@ export default function Sidebar({ variant, userName, schoolName }: SidebarProps)
   return (
     <aside className="sticky top-0 flex h-screen w-60 flex-col border-r border-gray-100 bg-white">
       <div className="px-5 pt-5 pb-2">
-        <Link href="/" className="text-xl font-bold text-teal">
+        <Link href={dashboardHref} className="text-xl font-bold text-teal">
           Saber
         </Link>
       </div>

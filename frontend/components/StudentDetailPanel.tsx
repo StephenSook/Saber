@@ -1,6 +1,7 @@
 "use client";
 
-import { X, Lightbulb, Calendar } from "lucide-react";
+import { useState } from "react";
+import { X, Lightbulb, Calendar, Plus, Check } from "lucide-react";
 import { useLanguage } from "@/components/LanguageProvider";
 import type { UiClassification } from "@/lib/ui";
 import { getClassificationColor, getInitials, getInitialsBgColor } from "@/lib/ui";
@@ -30,6 +31,22 @@ export default function StudentDetailPanel({
   const initials = getInitials(student.name);
   const bgColor = getInitialsBgColor(student.name);
   const classInfo = getClassificationColor(student.classification);
+  const [assignedSkills, setAssignedSkills] = useState<Set<string>>(new Set());
+  const [assigningSkill, setAssigningSkill] = useState<string | null>(null);
+
+  const handleAssign = async (skillTag: string): Promise<void> => {
+    setAssigningSkill(skillTag);
+    try {
+      await fetch(`/api/students/${student.id}/quests`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ skillTag }),
+      });
+      setAssignedSkills((prev) => new Set(prev).add(skillTag));
+    } finally {
+      setAssigningSkill(null);
+    }
+  };
 
   return (
     <div className="sticky top-0 flex h-screen w-80 flex-col border-l border-gray-100 bg-white">
@@ -79,17 +96,38 @@ export default function StudentDetailPanel({
                       ? 85 + (seed % 10)
                       : 45 + (seed % 15);
 
+              const isAssigned = assignedSkills.has(skill.skillTag);
+              const isAssigning = assigningSkill === skill.skillTag;
+
               return (
                 <div key={skill.skillTag}>
                   <div className="mb-1 flex items-center justify-between">
                     <span className="text-sm font-medium text-navy">
                       {skill.skillTag}
                     </span>
-                    <span className="text-xs text-gray-400">{mastery}%</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-400">{mastery}%</span>
+                      <button
+                        onClick={() => void handleAssign(skill.skillTag)}
+                        disabled={isAssigned || isAssigning}
+                        title={isAssigned ? "Quest assigned" : "Assign practice quest"}
+                        className={`flex h-5 w-5 items-center justify-center rounded-full transition-all duration-200 ${
+                          isAssigned
+                            ? "bg-teal/20 text-teal"
+                            : "bg-gray-100 text-gray-400 hover:bg-teal/20 hover:text-teal"
+                        } disabled:cursor-default`}
+                      >
+                        {isAssigned ? (
+                          <Check className="h-3 w-3" strokeWidth={2.5} />
+                        ) : (
+                          <Plus className="h-3 w-3" strokeWidth={2.5} />
+                        )}
+                      </button>
+                    </div>
                   </div>
                   <div className="h-2 w-full overflow-hidden rounded-full bg-gray-100">
                     <div
-                      className={`h-full rounded-full ${skillColor.bg} transition-all duration-600`}
+                      className={`h-full rounded-full ${skillColor.bg} transition-all duration-500`}
                       style={{ width: `${mastery}%` }}
                     />
                   </div>

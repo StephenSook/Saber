@@ -229,8 +229,9 @@ export default function DiagnosticTest() {
           responseLang: lang === "es" ? "es" : "en",
         });
         setAiExplanation(result);
-      } catch {
+      } catch (explainError) {
         setAiExplanation(null);
+        setError(explainError instanceof Error ? explainError.message : "Could not load the explanation. Try again.");
       } finally {
         setIsExplaining(false);
       }
