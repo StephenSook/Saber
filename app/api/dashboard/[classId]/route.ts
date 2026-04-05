@@ -74,8 +74,8 @@ export async function GET(
   void request;
 
   try {
-    const { classId: rawClassId } = await context.params;
-    const classId = parseClassId(rawClassId);
+    const { classId: classIdParam } = await context.params;
+    const classId = parseClassId(classIdParam);
 
     const classRecord = getClassById(classId);
 

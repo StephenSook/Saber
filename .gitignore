@@ -76,7 +76,6 @@ web_modules/
 
 # Next.js build output
 .next
-data/saber.db
 out
 
 # Nuxt.js build / generate output
@@ -140,3 +139,6 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 
 .cursor/rules/prompt0.mdc
+
+# SQLite database (generated at runtime)
+data/saber.db
