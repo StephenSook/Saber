@@ -177,6 +177,11 @@ export interface StudentDiagnosticSummary {
   latest_diagnostic_at: string | null;
 }
 
+export interface ClassSubjectGapCount {
+  subject: QuestionSubject;
+  gap_count: number;
+}
+
 export interface LeaderboardEntry {
   rank: number;
   student_id: number;
@@ -289,6 +294,11 @@ interface UploadRow {
   uploaded_at: string;
 }
 
+interface ClassSubjectGapCountRow {
+  subject: string;
+  gap_count: number;
+}
+
 interface RunResultLike {
   lastInsertRowid: number | bigint;
 }
@@ -396,6 +406,14 @@ const getDiagnosticByIdStatement = db.prepare(`
   WHERE id = ?
 `);
 
+const getLatestDiagnosticByStudentAndQuestionStatement = db.prepare(`
+  SELECT id, student_id, question_id, student_answer_es, classification, explanation, created_at
+  FROM diagnostics
+  WHERE student_id = ? AND question_id = ?
+  ORDER BY id DESC
+  LIMIT 1
+`);
+
 const getClassDashboardStatement = db.prepare(`
   SELECT
     s.id AS student_id,
@@ -435,6 +453,18 @@ const getClassDashboardStatement = db.prepare(`
   WHERE s.class_id = ?
   GROUP BY s.id, s.class_id, s.name, s.xp, s.level, s.streak_days, s.last_active
   ORDER BY s.name ASC, s.id ASC
+`);
+
+const getClassSubjectGapCountsStatement = db.prepare(`
+  SELECT
+    q.subject AS subject,
+    COUNT(d.id) AS gap_count
+  FROM diagnostics d
+  INNER JOIN students s ON s.id = d.student_id
+  INNER JOIN questions q ON q.id = d.question_id
+  WHERE s.class_id = ? AND d.classification IS NOT NULL
+  GROUP BY q.subject
+  ORDER BY gap_count DESC, q.subject ASC
 `);
 
 const getLeaderboardStatement = db.prepare(`
@@ -499,6 +529,12 @@ const getUploadByIdStatement = db.prepare(`
 const updateStudentXPStatement = db.prepare(`
   UPDATE students
   SET xp = ?, level = ?, last_active = ?
+  WHERE id = ?
+`);
+
+const updateDiagnosticStatement = db.prepare(`
+  UPDATE diagnostics
+  SET student_answer_es = ?, classification = ?, explanation = ?
   WHERE id = ?
 `);
 
@@ -1031,6 +1067,19 @@ function parseLeaderboardRow(row: unknown): LeaderboardRow {
   };
 }
 
+function parseClassSubjectGapCountRow(row: unknown): ClassSubjectGapCount {
+  const record = getRecord(row, "class_subject_gap_count");
+  const subjectRow: ClassSubjectGapCountRow = {
+    subject: getStringField(record, "subject", "class_subject_gap_count"),
+    gap_count: getNumberField(record, "gap_count", "class_subject_gap_count"),
+  };
+
+  return {
+    subject: ensureQuestionSubject(subjectRow.subject),
+    gap_count: subjectRow.gap_count,
+  };
+}
+
 function requireRow<T>(
   row: unknown,
   parser: (row: unknown) => T,
@@ -1114,6 +1163,17 @@ function getQuestionByIdOrThrow(questionId: string): Question {
   const row = getQuestionByIdStatement.get(safeQuestionId) as unknown;
 
   return requireRow(row, parseQuestionRow, `Question ${safeQuestionId} was not found.`);
+}
+
+function getDiagnosticByIdOrThrow(diagnosticId: number): DiagnosticRecord {
+  const safeDiagnosticId = ensurePositiveInteger("diagnosticId", diagnosticId);
+  const row = getDiagnosticByIdStatement.get(safeDiagnosticId) as unknown;
+
+  return requireRow(
+    row,
+    parseDiagnosticRow,
+    `Diagnostic ${safeDiagnosticId} was not found.`,
+  );
 }
 
 const insertMissedItemsTransaction = db.transaction(
@@ -1219,6 +1279,23 @@ export function getStudentsByClass(classId: number): Student[] {
       error,
       "Failed to load students for the class.",
       "DB_GET_STUDENTS_BY_CLASS_FAILED",
+    );
+  }
+}
+
+/**
+ * Returns the student record for the provided student id.
+ */
+export function getStudentById(studentId: number): Student {
+  try {
+    const safeStudentId = ensurePositiveInteger("studentId", studentId);
+
+    return getStudentByIdOrThrow(safeStudentId);
+  } catch (error: unknown) {
+    throw wrapDatabaseError(
+      error,
+      "Failed to load the student record.",
+      "DB_GET_STUDENT_BY_ID_FAILED",
     );
   }
 }
@@ -1376,6 +1453,71 @@ export function getClassDashboard(classId: number): StudentDiagnosticSummary[] {
       error,
       "Failed to load the class dashboard.",
       "DB_GET_CLASS_DASHBOARD_FAILED",
+    );
+  }
+}
+
+/**
+ * Returns per-subject classified gap counts for the provided class.
+ */
+export function getClassSubjectGapCounts(classId: number): ClassSubjectGapCount[] {
+  try {
+    const safeClassId = ensurePositiveInteger("classId", classId);
+    const rows = getClassSubjectGapCountsStatement.all(safeClassId) as unknown[];
+
+    return rows.map((row: unknown) => parseClassSubjectGapCountRow(row));
+  } catch (error: unknown) {
+    throw wrapDatabaseError(
+      error,
+      "Failed to load subject gap counts for the class.",
+      "DB_GET_CLASS_SUBJECT_GAP_COUNTS_FAILED",
+    );
+  }
+}
+
+/**
+ * Saves a diagnostic answer and updates the latest matching record when one already exists.
+ */
+export function saveDiagnosticResult(data: DiagnosticInsert): DiagnosticRecord {
+  try {
+    const safeStudentId = ensurePositiveInteger("student_id", data.student_id);
+    const safeQuestionId = ensureNonEmptyString("question_id", data.question_id);
+    const safeStudentAnswer = ensureNullableString(
+      "student_answer_es",
+      data.student_answer_es,
+    );
+    const safeExplanation = ensureNullableString("explanation", data.explanation);
+    const existingDiagnostic = getLatestDiagnosticByStudentAndQuestionStatement.get(
+      safeStudentId,
+      safeQuestionId,
+    ) as unknown;
+
+    if (typeof existingDiagnostic === "undefined") {
+      return insertDiagnostic({
+        student_id: safeStudentId,
+        question_id: safeQuestionId,
+        student_answer_es: safeStudentAnswer,
+        classification: data.classification,
+        explanation: safeExplanation,
+        created_at: data.created_at,
+      });
+    }
+
+    const parsedDiagnostic = parseDiagnosticRow(existingDiagnostic);
+
+    updateDiagnosticStatement.run(
+      safeStudentAnswer,
+      data.classification,
+      safeExplanation,
+      parsedDiagnostic.id,
+    );
+
+    return getDiagnosticByIdOrThrow(parsedDiagnostic.id);
+  } catch (error: unknown) {
+    throw wrapDatabaseError(
+      error,
+      "Failed to save the diagnostic result.",
+      "DB_SAVE_DIAGNOSTIC_RESULT_FAILED",
     );
   }
 }

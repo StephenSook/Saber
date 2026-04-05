@@ -1,6 +1,6 @@
 import {
   DIAGNOSTIC_CLASSIFICATIONS,
-  insertDiagnostic,
+  saveDiagnosticResult,
   type DiagnosticClassification,
   type DiagnosticRecord,
 } from "./db";
@@ -36,7 +36,7 @@ export async function classifyStudentResponse(
     question_es: safePayload.question_es,
     answer_es: safePayload.answer_es,
   });
-  const diagnosticRecord = insertDiagnostic({
+  const diagnosticRecord = saveDiagnosticResult({
     student_id: safePayload.studentId,
     question_id: safePayload.questionId,
     student_answer_es: safePayload.answer_es,
