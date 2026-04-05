@@ -242,6 +242,27 @@ export async function classifyDiagnosticAnswer(input: {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Auth
+// ---------------------------------------------------------------------------
+
+export interface AuthUser {
+  id: number;
+  name: string;
+  email: string | null;
+  role: "teacher" | "student";
+  classId: number | null;
+  joinCode: string | null;
+}
+
+export async function getCurrentUser(): Promise<AuthUser> {
+  return requestJson<AuthUser>("/api/auth/me");
+}
+
+export async function logout(): Promise<void> {
+  await fetch("/api/auth/logout", { method: "POST" });
+}
+
 export function mapColorCodeToClassification(
   colorCode: DashboardStudent["color_code"],
 ): UiClassification {

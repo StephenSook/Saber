@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS classes (
     teacher_id INTEGER NOT NULL,
     name TEXT NOT NULL,
     grade_level INTEGER NOT NULL,
+    join_code TEXT UNIQUE NOT NULL,
     FOREIGN KEY (teacher_id) REFERENCES teachers(id)
 );
 
@@ -21,6 +22,8 @@ CREATE TABLE IF NOT EXISTS students (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     class_id INTEGER NOT NULL,
     name TEXT NOT NULL,
+    email TEXT UNIQUE,
+    password_hash TEXT,
     xp INTEGER DEFAULT 0,
     level INTEGER DEFAULT 1,
     streak_days INTEGER DEFAULT 0,

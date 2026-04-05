@@ -16,6 +16,7 @@ import {
   type QuestionSubject,
   upsertStudent,
 } from "../../../lib/db";
+import { getSessionFromCookies, USER_ROLES } from "../../../lib/auth";
 import { AppError, handleApiError, handleApiOptions, jsonSuccess } from "../../../lib/errors";
 
 const SCORE_REQUIRED_HEADERS = [
@@ -131,6 +132,15 @@ export async function OPTIONS(): Promise<Response> {
  */
 export async function POST(request: Request): Promise<Response> {
   try {
+    const session = await getSessionFromCookies();
+
+    if (session === null || session.role !== USER_ROLES.TEACHER) {
+      throw new AppError("Authentication required.", {
+        statusCode: 401,
+        code: "UPLOAD_UNAUTHORIZED",
+      });
+    }
+
     const formData = await request.formData();
     const classId = parseClassId(formData.get("classId"));
     const file = parseCsvFile(
@@ -139,6 +149,14 @@ export async function POST(request: Request): Promise<Response> {
     const csvText = await file.text();
     const parsedCsv = parseCsvRows(csvText);
     const targetClass = resolveClass(classId);
+
+    if (targetClass.teacher_id !== session.id) {
+      throw new AppError("You do not have permission to upload to this class.", {
+        statusCode: 403,
+        code: "UPLOAD_FORBIDDEN",
+      });
+    }
+
     const questionBank = await getQuestionBank();
 
     const result = persistUpload({

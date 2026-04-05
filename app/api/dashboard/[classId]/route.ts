@@ -5,6 +5,7 @@ import {
   type ClassSubjectGapCount,
   type StudentDiagnosticSummary as DatabaseStudentDiagnosticSummary,
 } from "../../../../lib/db";
+import { getSessionFromCookies, USER_ROLES } from "../../../../lib/auth";
 import { AppError, handleApiError, handleApiOptions, jsonSuccess } from "../../../../lib/errors";
 
 const DASHBOARD_COLOR_CODES = {
@@ -68,16 +69,30 @@ export async function OPTIONS(): Promise<Response> {
  * Returns the teacher dashboard summary for a class.
  */
 export async function GET(
-  request: Request,
+  _request: Request,
   context: { params: Promise<{ classId: string }> },
 ): Promise<Response> {
-  void request;
-
   try {
+    const session = await getSessionFromCookies();
+
+    if (session === null || session.role !== USER_ROLES.TEACHER) {
+      throw new AppError("Authentication required.", {
+        statusCode: 401,
+        code: "DASHBOARD_UNAUTHORIZED",
+      });
+    }
+
     const { classId: classIdParam } = await context.params;
     const classId = parseClassId(classIdParam);
 
     const classRecord = getClassById(classId);
+
+    if (classRecord.teacher_id !== session.id) {
+      throw new AppError("You do not have permission to view this class.", {
+        statusCode: 403,
+        code: "DASHBOARD_FORBIDDEN",
+      });
+    }
 
     const dashboardRows = getClassDashboard(classId);
     const subjectGapCounts = getClassSubjectGapCounts(classId);

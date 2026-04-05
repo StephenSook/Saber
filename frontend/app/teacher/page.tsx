@@ -1,8 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
-import { Upload, Search, SlidersHorizontal } from "lucide-react";
+import { Upload, Search, SlidersHorizontal, Copy, Check } from "lucide-react";
 import Sidebar from "@/components/Sidebar";
 import StudentDetailPanel, {
   type StudentDetailPanelStudent,
@@ -14,8 +13,10 @@ import {
   generateSpanishQuestions,
   getClassDashboard,
   getStudentDashboard,
+  getCurrentUser,
   mapColorCodeToClassification,
   type DashboardResponseData,
+  type AuthUser,
   uploadCsv,
 } from "@/lib/api";
 import {
@@ -25,12 +26,12 @@ import {
   getInitialsBgColor,
 } from "@/lib/ui";
 
-const DEFAULT_CLASS_ID = 1;
-
 export default function TeacherDashboard() {
   const { t } = useLanguage();
-  const searchParams = useSearchParams();
-  const classId = parseClassId(searchParams.get("classId"));
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [classId, setClassId] = useState<number | null>(null);
+  const [joinCode, setJoinCode] = useState<string | null>(null);
+  const [codeCopied, setCodeCopied] = useState(false);
   const [dashboard, setDashboard] = useState<DashboardResponseData | null>(null);
   const [selectedStudent, setSelectedStudent] =
     useState<StudentDetailPanelStudent | null>(null);
@@ -43,7 +44,35 @@ export default function TeacherDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadUser = async (): Promise<void> => {
+      try {
+        const me = await getCurrentUser();
+
+        if (!cancelled) {
+          setUser(me);
+          setClassId(me.classId);
+          setJoinCode(me.joinCode);
+        }
+      } catch {
+        if (!cancelled) {
+          setError("Failed to load user session.");
+        }
+      }
+    };
+
+    void loadUser();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const loadDashboard = useCallback(async (): Promise<void> => {
+    if (classId === null) return;
+
     setIsLoading(true);
     setError(null);
 
@@ -144,6 +173,8 @@ export default function TeacherDashboard() {
 
   const handleUpload = useCallback(
     async (file: File): Promise<void> => {
+      if (classId === null) return;
+
       setIsUploading(true);
       setError(null);
       setUploadMessage(null);
@@ -170,11 +201,18 @@ export default function TeacherDashboard() {
     [classId, loadDashboard],
   );
 
+  const handleCopyJoinCode = async (): Promise<void> => {
+    if (!joinCode) return;
+    await navigator.clipboard.writeText(joinCode);
+    setCodeCopied(true);
+    setTimeout(() => setCodeCopied(false), 2000);
+  };
+
   return (
     <div className="flex min-h-screen">
       <Sidebar
         variant="teacher"
-        userName="Teacher Dashboard"
+        userName={user?.name ?? "Teacher Dashboard"}
         schoolName={dashboard?.classroom.name ?? "Saber"}
       />
 
@@ -189,7 +227,24 @@ export default function TeacherDashboard() {
               <span>{t("nav.messages")}</span>
             </div>
           </div>
-          <LanguageToggle />
+          <div className="flex items-center gap-4">
+            {joinCode && (
+              <button
+                onClick={handleCopyJoinCode}
+                className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-navy transition-colors hover:bg-gray-100"
+                title="Share this code with your students"
+              >
+                <span className="text-xs text-gray-400">Join Code:</span>
+                <span className="font-mono font-bold tracking-wider">{joinCode}</span>
+                {codeCopied ? (
+                  <Check className="h-3.5 w-3.5 text-teal" />
+                ) : (
+                  <Copy className="h-3.5 w-3.5 text-gray-400" />
+                )}
+              </button>
+            )}
+            <LanguageToggle />
+          </div>
         </header>
 
         <div className="p-8">
@@ -414,14 +469,3 @@ export default function TeacherDashboard() {
   );
 }
 
-function parseClassId(value: string | null): number {
-  if (value === null) {
-    return DEFAULT_CLASS_ID;
-  }
-
-  const parsedValue = Number(value);
-
-  return Number.isInteger(parsedValue) && parsedValue > 0
-    ? parsedValue
-    : DEFAULT_CLASS_ID;
-}

@@ -108,6 +108,7 @@ const translations: Record<string, TranslationEntry> = {
   "student.questBoard": { en: "Quest Board", es: "Tablero de Misiones" },
   "student.selectSkill": { en: "Select a skill to master", es: "Elige una habilidad para dominar" },
   "student.viewAll": { en: "View All", es: "Ver Todo" },
+  "student.showLess": { en: "Show Less", es: "Mostrar Menos" },
   "student.exercises": { en: "EXERCISES", es: "EJERCICIOS" },
 
   // ── Leaderboard ──

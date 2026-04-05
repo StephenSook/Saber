@@ -2,30 +2,56 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Star } from "lucide-react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
 import QuestCard from "@/components/QuestCard";
 import Leaderboard from "@/components/Leaderboard";
 import MicButton from "@/components/MicButton";
 import { useLanguage } from "@/components/LanguageProvider";
 import {
+  getCurrentUser,
   getStudentDashboard,
   mapQuestStatus,
   type StudentProfileResponseData,
 } from "@/lib/api";
 
 const days = ["M", "T", "W", "T", "F", "S", "S"];
-const DEFAULT_STUDENT_ID = 1;
 
 export default function StudentDashboard() {
   const { t } = useLanguage();
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const studentId = parseStudentId(searchParams.get("studentId"));
+  const [studentId, setStudentId] = useState<number | null>(null);
   const [profile, setProfile] = useState<StudentProfileResponseData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showAllQuests, setShowAllQuests] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
+
+    const loadUser = async (): Promise<void> => {
+      try {
+        const me = await getCurrentUser();
+
+        if (!cancelled) {
+          setStudentId(me.id);
+        }
+      } catch {
+        if (!cancelled) {
+          setError("Failed to load user session.");
+        }
+      }
+    };
+
+    void loadUser();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (studentId === null) return;
+
     let cancelled = false;
 
     const loadProfile = async (): Promise<void> => {
@@ -62,7 +88,7 @@ export default function StudentDashboard() {
     return Math.round((profile.student.xp / profile.student.nextLevelXp) * 100);
   }, [profile]);
 
-  const visibleQuests =
+  const quests =
     profile?.quests.map((quest) => ({
       id: quest.id,
       title: quest.skillTag,
@@ -72,6 +98,7 @@ export default function StudentDashboard() {
       xpReward: quest.xpReward,
       status: mapQuestStatus(quest.status),
     })) ?? [];
+  const visibleQuests = showAllQuests ? quests : quests.slice(0, 3);
 
   if (profile === null && error === null) {
     return (
@@ -168,9 +195,14 @@ export default function StudentDashboard() {
                     {t("student.selectSkill")}
                   </p>
                 </div>
-                <button className="text-xs font-medium text-teal hover:underline">
-                  {t("student.viewAll")}
-                </button>
+                {quests.length > 3 ? (
+                  <button
+                    onClick={() => setShowAllQuests((currentValue) => !currentValue)}
+                    className="text-xs font-medium text-teal hover:underline"
+                  >
+                    {showAllQuests ? t("student.showLess") : t("student.viewAll")}
+                  </button>
+                ) : null}
               </div>
 
               {visibleQuests.length === 0 ? (
@@ -183,7 +215,7 @@ export default function StudentDashboard() {
                     <QuestCard
                       key={quest.id}
                       quest={quest}
-                      studentId={profile?.student.id ?? studentId}
+                      studentId={profile?.student.id ?? studentId ?? 0}
                     />
                   ))}
                 </div>
@@ -203,22 +235,10 @@ export default function StudentDashboard() {
       <MicButton
         isListening={false}
         onClick={() => {
-          router.push(`/test?studentId=${profile?.student.id ?? studentId}`);
+          router.push(`/test?studentId=${profile?.student.id ?? studentId ?? 1}`);
         }}
         floating
       />
     </div>
   );
-}
-
-function parseStudentId(value: string | null): number {
-  if (value === null) {
-    return DEFAULT_STUDENT_ID;
-  }
-
-  const parsedValue = Number(value);
-
-  return Number.isInteger(parsedValue) && parsedValue > 0
-    ? parsedValue
-    : DEFAULT_STUDENT_ID;
 }

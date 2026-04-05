@@ -28,6 +28,7 @@ export default function QuestView() {
   const [totalXP, setTotalXP] = useState(0);
   const [completed, setCompleted] = useState(false);
   const [textAnswer, setTextAnswer] = useState("");
+  const [inputMethod, setInputMethod] = useState<"text" | "speech">("text");
   const [profile, setProfile] = useState<StudentProfileResponseData | null>(null);
   const [diagnostic, setDiagnostic] = useState<StudentDiagnosticResponseData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -89,22 +90,31 @@ export default function QuestView() {
   const totalQuestions = questions.length;
   const progressPct = totalQuestions === 0 ? 0 : ((currentIndex + 1) / totalQuestions) * 100;
   const letters = ["A", "B", "C", "D"];
+  const transcriptAnswer = transcript.trim();
+  const typedAnswer = textAnswer.trim();
+  const freeResponseAnswer = (isListening ? transcriptAnswer : typedAnswer).trim();
+  const canSubmit = selectedAnswer !== null || (!isListening && freeResponseAnswer.length > 0);
 
   const handleSelect = useCallback(
     (index: number) => {
       if (feedback) return;
       setSelectedAnswer(index);
+      setTextAnswer("");
+      setInputMethod("text");
     },
     [feedback]
   );
 
   const handleSubmit = useCallback(() => {
-    if (question === undefined || selectedAnswer === null) {
+    if (question === undefined || !canSubmit) {
       return;
     }
 
     const answerEs =
-      question.choicesEs?.[selectedAnswer] ?? question.choicesEn?.[selectedAnswer] ?? "";
+      selectedAnswer === null
+        ? freeResponseAnswer
+        : question.choicesEs?.[selectedAnswer] ?? question.choicesEn?.[selectedAnswer] ?? "";
+    const nextInputMethod = selectedAnswer === null ? inputMethod : "text";
 
     const submitAnswer = async (): Promise<void> => {
       try {
@@ -112,7 +122,7 @@ export default function QuestView() {
           studentId,
           questionId: question.id,
           answerEs,
-          inputMethod: "text",
+          inputMethod: nextInputMethod,
         });
 
         if (answerResult.correct) {
@@ -130,7 +140,7 @@ export default function QuestView() {
     };
 
     void submitAnswer();
-  }, [question, selectedAnswer, studentId]);
+  }, [canSubmit, freeResponseAnswer, inputMethod, question, selectedAnswer, studentId]);
 
   const handleContinue = useCallback(() => {
     if (currentIndex < totalQuestions - 1) {
@@ -138,6 +148,7 @@ export default function QuestView() {
       setSelectedAnswer(null);
       setFeedback(null);
       setTextAnswer("");
+      setInputMethod("text");
       resetTranscript();
     } else {
       setCompleted(true);
@@ -147,8 +158,14 @@ export default function QuestView() {
   const handleMicToggle = useCallback(() => {
     if (isListening) {
       stopListening();
-      setTextAnswer(transcript);
+      const spokenAnswer = transcript.trim();
+      setTextAnswer(spokenAnswer);
+      if (spokenAnswer.length > 0) {
+        setInputMethod("speech");
+      }
     } else {
+      setSelectedAnswer(null);
+      setInputMethod("speech");
       resetTranscript();
       startListening();
     }
@@ -291,7 +308,11 @@ export default function QuestView() {
                 type="text"
                 placeholder={t("test.placeholder")}
                 value={isListening ? transcript : textAnswer}
-                onChange={(e) => setTextAnswer(e.target.value)}
+                onChange={(e) => {
+                  setSelectedAnswer(null);
+                  setTextAnswer(e.target.value);
+                  setInputMethod("text");
+                }}
                 className="flex-1 rounded-lg border border-gray-100 bg-gray-50 px-4 py-2.5 text-sm text-navy placeholder:text-gray-300 focus:border-teal focus:outline-none"
               />
               <MicButton isListening={isListening} onClick={handleMicToggle} />
@@ -307,7 +328,7 @@ export default function QuestView() {
           {!feedback ? (
             <button
               onClick={handleSubmit}
-              disabled={selectedAnswer === null}
+              disabled={!canSubmit}
               className="w-full rounded-lg bg-navy py-3.5 text-sm font-semibold text-white transition-all duration-200 hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-40"
             >
               {t("quest.submit")}

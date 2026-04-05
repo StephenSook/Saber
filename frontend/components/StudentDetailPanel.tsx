@@ -129,11 +129,6 @@ export default function StudentDetailPanel({
         </div>
       </div>
 
-      <div className="border-t border-gray-100 p-4">
-        <button className="w-full rounded-lg bg-coral px-4 py-3 text-sm font-semibold text-white transition-all duration-200 hover:scale-[1.02] hover:bg-coral/90">
-          {t("detail.assignPractice")}
-        </button>
-      </div>
     </div>
   );
 }

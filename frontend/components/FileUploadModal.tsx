@@ -77,8 +77,14 @@ export default function FileUploadModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="mx-4 w-full max-w-lg rounded-xl bg-white p-6 shadow-xl">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      onClick={onClose}
+    >
+      <div
+        className="mx-4 w-full max-w-lg rounded-xl bg-white p-6 shadow-xl"
+        onClick={(event) => event.stopPropagation()}
+      >
         {/* Header */}
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-bold text-navy">{t("upload.title")}</h2>

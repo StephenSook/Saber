@@ -60,10 +60,20 @@ export interface Student {
   id: number;
   class_id: number;
   name: string;
+  email: string | null;
+  password_hash: string | null;
   xp: number;
   level: number;
   streak_days: number;
   last_active: string | null;
+}
+
+export interface Teacher {
+  id: number;
+  name: string;
+  email: string;
+  password_hash: string;
+  created_at: string;
 }
 
 export interface Class {
@@ -71,6 +81,7 @@ export interface Class {
   teacher_id: number;
   name: string;
   grade_level: QuestionGrade;
+  join_code: string;
 }
 
 export interface Question {
@@ -256,11 +267,20 @@ interface QuestionRow {
   correct_answer: string;
 }
 
+interface TeacherRow {
+  id: number;
+  name: string;
+  email: string;
+  password_hash: string;
+  created_at: string;
+}
+
 interface ClassRow {
   id: number;
   teacher_id: number;
   name: string;
   grade_level: number;
+  join_code: string;
 }
 
 interface DiagnosticRow {
@@ -394,13 +414,13 @@ export function probeDatabaseHealth(): "ok" | "error" {
 }
 
 const getStudentByIdStatement = db.prepare(`
-  SELECT id, class_id, name, xp, level, streak_days, last_active
+  SELECT id, class_id, name, email, password_hash, xp, level, streak_days, last_active
   FROM students
   WHERE id = ?
 `);
 
 const getClassByIdStatement = db.prepare(`
-  SELECT id, teacher_id, name, grade_level
+  SELECT id, teacher_id, name, grade_level, join_code
   FROM classes
   WHERE id = ?
 `);
@@ -412,14 +432,14 @@ const getQuestionByIdStatement = db.prepare(`
 `);
 
 const getStudentsByClassStatement = db.prepare(`
-  SELECT id, class_id, name, xp, level, streak_days, last_active
+  SELECT id, class_id, name, email, password_hash, xp, level, streak_days, last_active
   FROM students
   WHERE class_id = ?
   ORDER BY name ASC, id ASC
 `);
 
 const getStudentByClassAndNameStatement = db.prepare(`
-  SELECT id, class_id, name, xp, level, streak_days, last_active
+  SELECT id, class_id, name, email, password_hash, xp, level, streak_days, last_active
   FROM students
   WHERE class_id = ? AND name = ?
   ORDER BY id ASC
@@ -673,13 +693,13 @@ const getLatestStudentDiagnosticQuestionsStatement = db.prepare(`
 `);
 
 const insertStudentStatement = db.prepare(`
-  INSERT INTO students (class_id, name, xp, level, streak_days, last_active)
-  VALUES (?, ?, ?, ?, ?, ?)
+  INSERT INTO students (class_id, name, email, password_hash, xp, level, streak_days, last_active)
+  VALUES (?, ?, NULL, NULL, ?, ?, ?, ?)
 `);
 
 const upsertStudentByIdStatement = db.prepare(`
-  INSERT INTO students (id, class_id, name, xp, level, streak_days, last_active)
-  VALUES (?, ?, ?, ?, ?, ?, ?)
+  INSERT INTO students (id, class_id, name, email, password_hash, xp, level, streak_days, last_active)
+  VALUES (?, ?, ?, NULL, NULL, ?, ?, ?, ?)
   ON CONFLICT(id) DO UPDATE SET
     class_id = excluded.class_id,
     name = excluded.name,
@@ -976,6 +996,8 @@ function parseStudentRow(row: unknown): Student {
     id: getNumberField(record, "id", "student"),
     class_id: getNumberField(record, "class_id", "student"),
     name: getStringField(record, "name", "student"),
+    email: getNullableStringField(record, "email", "student"),
+    password_hash: getNullableStringField(record, "password_hash", "student"),
     xp: getNumberField(record, "xp", "student"),
     level: getNumberField(record, "level", "student"),
     streak_days: getNumberField(record, "streak_days", "student"),
@@ -990,6 +1012,7 @@ function parseClassRow(row: unknown): Class {
     teacher_id: getNumberField(record, "teacher_id", "class"),
     name: getStringField(record, "name", "class"),
     grade_level: getNumberField(record, "grade_level", "class"),
+    join_code: getStringField(record, "join_code", "class"),
   };
 
   return {
@@ -997,6 +1020,26 @@ function parseClassRow(row: unknown): Class {
     teacher_id: classRow.teacher_id,
     name: classRow.name,
     grade_level: ensureQuestionGrade(classRow.grade_level),
+    join_code: classRow.join_code,
+  };
+}
+
+function parseTeacherRow(row: unknown): Teacher {
+  const record = getRecord(row, "teacher");
+  const teacherRow: TeacherRow = {
+    id: getNumberField(record, "id", "teacher"),
+    name: getStringField(record, "name", "teacher"),
+    email: getStringField(record, "email", "teacher"),
+    password_hash: getStringField(record, "password_hash", "teacher"),
+    created_at: getStringField(record, "created_at", "teacher"),
+  };
+
+  return {
+    id: teacherRow.id,
+    name: teacherRow.name,
+    email: teacherRow.email,
+    password_hash: teacherRow.password_hash,
+    created_at: teacherRow.created_at,
   };
 }
 
@@ -2034,6 +2077,239 @@ export function awardXP(
       "Failed to award XP to the student.",
       "DB_AWARD_XP_FAILED",
     );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Auth prepared statements
+// ---------------------------------------------------------------------------
+
+const getTeacherByEmailStatement = db.prepare(`
+  SELECT id, name, email, password_hash, created_at
+  FROM teachers
+  WHERE email = ?
+`);
+
+const getTeacherByIdStatement = db.prepare(`
+  SELECT id, name, email, password_hash, created_at
+  FROM teachers
+  WHERE id = ?
+`);
+
+const insertTeacherStatement = db.prepare(`
+  INSERT INTO teachers (name, email, password_hash, created_at)
+  VALUES (?, ?, ?, ?)
+`);
+
+const getStudentByEmailStatement = db.prepare(`
+  SELECT id, class_id, name, email, password_hash, xp, level, streak_days, last_active
+  FROM students
+  WHERE email = ?
+`);
+
+const insertStudentWithAuthStatement = db.prepare(`
+  INSERT INTO students (class_id, name, email, password_hash, xp, level, streak_days, last_active)
+  VALUES (?, ?, ?, ?, 0, 1, 0, NULL)
+`);
+
+const getClassByJoinCodeStatement = db.prepare(`
+  SELECT id, teacher_id, name, grade_level, join_code
+  FROM classes
+  WHERE join_code = ?
+`);
+
+const getClassesByTeacherIdStatement = db.prepare(`
+  SELECT id, teacher_id, name, grade_level, join_code
+  FROM classes
+  WHERE teacher_id = ?
+  ORDER BY id ASC
+`);
+
+const insertClassStatement = db.prepare(`
+  INSERT INTO classes (teacher_id, name, grade_level, join_code)
+  VALUES (?, ?, ?, ?)
+`);
+
+// ---------------------------------------------------------------------------
+// Auth query exports
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns the teacher record for the provided email, or null if not found.
+ */
+export function getTeacherByEmail(email: string): Teacher | null {
+  try {
+    const safeEmail = ensureNonEmptyString("email", email).toLowerCase();
+    const row = getTeacherByEmailStatement.get(safeEmail) as unknown;
+
+    if (typeof row === "undefined") {
+      return null;
+    }
+
+    return parseTeacherRow(row);
+  } catch (error: unknown) {
+    throw wrapDatabaseError(error, "Failed to look up teacher by email.", "DB_GET_TEACHER_BY_EMAIL_FAILED");
+  }
+}
+
+/**
+ * Returns the teacher record for the provided id.
+ */
+export function getTeacherById(teacherId: number): Teacher {
+  try {
+    const safeId = ensurePositiveInteger("teacherId", teacherId);
+    const row = getTeacherByIdStatement.get(safeId) as unknown;
+
+    return requireRow(row, parseTeacherRow, `Teacher ${safeId} was not found.`);
+  } catch (error: unknown) {
+    throw wrapDatabaseError(error, "Failed to load the teacher record.", "DB_GET_TEACHER_BY_ID_FAILED");
+  }
+}
+
+/**
+ * Creates a new teacher record and returns the saved row.
+ */
+export function insertTeacher(name: string, email: string, passwordHash: string): Teacher {
+  try {
+    const safeName = ensureNonEmptyString("name", name);
+    const safeEmail = ensureNonEmptyString("email", email).toLowerCase();
+    const safeHash = ensureNonEmptyString("passwordHash", passwordHash);
+    const createdAt = getCurrentTimestamp();
+
+    const result = insertTeacherStatement.run(safeName, safeEmail, safeHash, createdAt) as RunResultLike;
+    const row = getTeacherByIdStatement.get(toInsertRowId(result.lastInsertRowid)) as unknown;
+
+    return requireRow(row, parseTeacherRow, "The inserted teacher could not be found.");
+  } catch (error: unknown) {
+    throw wrapDatabaseError(error, "Failed to create the teacher record.", "DB_INSERT_TEACHER_FAILED");
+  }
+}
+
+/**
+ * Returns the student record for the provided email, or null if not found.
+ */
+export function getStudentByEmail(email: string): Student | null {
+  try {
+    const safeEmail = ensureNonEmptyString("email", email).toLowerCase();
+    const row = getStudentByEmailStatement.get(safeEmail) as unknown;
+
+    if (typeof row === "undefined") {
+      return null;
+    }
+
+    return parseStudentRow(row);
+  } catch (error: unknown) {
+    throw wrapDatabaseError(error, "Failed to look up student by email.", "DB_GET_STUDENT_BY_EMAIL_FAILED");
+  }
+}
+
+/**
+ * Creates a new student record with auth credentials and returns the saved row.
+ */
+export function insertStudentWithAuth(
+  name: string,
+  email: string,
+  passwordHash: string,
+  classId: number,
+): Student {
+  try {
+    const safeName = ensureNonEmptyString("name", name);
+    const safeEmail = ensureNonEmptyString("email", email).toLowerCase();
+    const safeHash = ensureNonEmptyString("passwordHash", passwordHash);
+    const safeClassId = ensurePositiveInteger("classId", classId);
+
+    const result = insertStudentWithAuthStatement.run(
+      safeClassId, safeName, safeEmail, safeHash,
+    ) as RunResultLike;
+
+    return getStudentByIdOrThrow(toInsertRowId(result.lastInsertRowid));
+  } catch (error: unknown) {
+    throw wrapDatabaseError(error, "Failed to create the student record.", "DB_INSERT_STUDENT_WITH_AUTH_FAILED");
+  }
+}
+
+/**
+ * Returns the class record for the provided join code, or null if not found.
+ */
+export function getClassByJoinCode(joinCode: string): Class | null {
+  try {
+    const safeCode = ensureNonEmptyString("joinCode", joinCode).toUpperCase();
+    const row = getClassByJoinCodeStatement.get(safeCode) as unknown;
+
+    if (typeof row === "undefined") {
+      return null;
+    }
+
+    return parseClassRow(row);
+  } catch (error: unknown) {
+    throw wrapDatabaseError(error, "Failed to look up class by join code.", "DB_GET_CLASS_BY_JOIN_CODE_FAILED");
+  }
+}
+
+/**
+ * Returns all classes owned by the provided teacher.
+ */
+export function getClassesByTeacherId(teacherId: number): Class[] {
+  try {
+    const safeId = ensurePositiveInteger("teacherId", teacherId);
+    const rows = getClassesByTeacherIdStatement.all(safeId) as unknown[];
+
+    return rows.map((row: unknown) => parseClassRow(row));
+  } catch (error: unknown) {
+    throw wrapDatabaseError(error, "Failed to load teacher's classes.", "DB_GET_CLASSES_BY_TEACHER_FAILED");
+  }
+}
+
+const JOIN_CODE_LENGTH = 6;
+const JOIN_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+/**
+ * Generates a unique alphanumeric join code for a class.
+ */
+export function generateJoinCode(): string {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    let code = "";
+
+    for (let i = 0; i < JOIN_CODE_LENGTH; i++) {
+      code += JOIN_CODE_CHARS[Math.floor(Math.random() * JOIN_CODE_CHARS.length)];
+    }
+
+    const existing = getClassByJoinCodeStatement.get(code) as unknown;
+
+    if (typeof existing === "undefined") {
+      return code;
+    }
+  }
+
+  throw new AppError("Failed to generate a unique join code after multiple attempts.", {
+    statusCode: 500,
+    code: "DB_JOIN_CODE_GENERATION_FAILED",
+  });
+}
+
+/**
+ * Creates a new class with an auto-generated join code and returns the saved row.
+ */
+export function insertClassWithJoinCode(
+  teacherId: number,
+  name: string,
+  gradeLevel: number,
+): Class {
+  try {
+    const safeTeacherId = ensurePositiveInteger("teacherId", teacherId);
+    const safeName = ensureNonEmptyString("name", name);
+    const safeGrade = ensureQuestionGrade(gradeLevel);
+    const joinCode = generateJoinCode();
+
+    const result = insertClassStatement.run(
+      safeTeacherId, safeName, safeGrade, joinCode,
+    ) as RunResultLike;
+
+    const row = getClassByIdStatement.get(toInsertRowId(result.lastInsertRowid)) as unknown;
+
+    return requireRow(row, parseClassRow, "The inserted class could not be found.");
+  } catch (error: unknown) {
+    throw wrapDatabaseError(error, "Failed to create the class record.", "DB_INSERT_CLASS_FAILED");
   }
 }
 
