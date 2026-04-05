@@ -263,6 +263,32 @@ export async function logout(): Promise<void> {
   await fetch("/api/auth/logout", { method: "POST" });
 }
 
+// ---------------------------------------------------------------------------
+// AI Explain
+// ---------------------------------------------------------------------------
+
+export interface QuestionExplanationData {
+  keywords: Array<{ word: string; definition: string }>;
+  conceptExplanation: string;
+  stepByStep: string;
+  languageTip: string | null;
+}
+
+export async function explainQuestion(input: {
+  questionEn: string;
+  questionEs: string;
+  correctAnswer: string;
+  studentAnswer: string;
+  subject: string;
+  responseLang: "en" | "es";
+}): Promise<QuestionExplanationData> {
+  return requestJson<QuestionExplanationData>("/api/explain", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
 export function mapColorCodeToClassification(
   colorCode: DashboardStudent["color_code"],
 ): UiClassification {

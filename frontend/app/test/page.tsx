@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { X, Check, Sparkles } from "lucide-react";
+import { X, Check, Sparkles, Lightbulb } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import XPAnimation from "@/components/XPAnimation";
@@ -11,9 +11,11 @@ import { useLanguage } from "@/components/LanguageProvider";
 import LanguageToggle from "@/components/ui/LanguageToggle";
 import {
   classifyDiagnosticAnswer,
+  explainQuestion,
   getStudentDashboard,
   getStudentDiagnostic,
   submitDiagnosticAnswer,
+  type QuestionExplanationData,
   type StudentDiagnosticResponseData,
   type StudentProfileResponseData,
 } from "@/lib/api";
@@ -44,6 +46,8 @@ export default function DiagnosticTest() {
     StudentDiagnosticResponseData["questions"]
   >([]);
   const [usedSpeechInput, setUsedSpeechInput] = useState(false);
+  const [aiExplanation, setAiExplanation] = useState<QuestionExplanationData | null>(null);
+  const [isExplaining, setIsExplaining] = useState(false);
 
   const { transcript, isListening, startListening, stopListening, resetTranscript } =
     useSpeechToText("es-ES");
@@ -198,11 +202,42 @@ export default function DiagnosticTest() {
       setFeedback(null);
       setTextAnswer("");
       setUsedSpeechInput(false);
+      setAiExplanation(null);
       resetTranscript();
     } else {
       setShowResults(true);
     }
   }, [currentIndex, totalQuestions, resetTranscript]);
+
+  const handleExplain = useCallback(() => {
+    if (question === undefined || isExplaining) return;
+
+    const studentAnswer =
+      selectedAnswer !== null
+        ? (question.choicesEs?.[selectedAnswer] ?? question.choicesEn?.[selectedAnswer] ?? "")
+        : textAnswer.trim();
+
+    const runExplain = async (): Promise<void> => {
+      setIsExplaining(true);
+      try {
+        const result = await explainQuestion({
+          questionEn: question.questionEn,
+          questionEs: question.questionEs,
+          correctAnswer: question.correctAnswer,
+          studentAnswer: studentAnswer.length > 0 ? studentAnswer : "(no answer)",
+          subject: question.subject,
+          responseLang: lang === "es" ? "es" : "en",
+        });
+        setAiExplanation(result);
+      } catch {
+        setAiExplanation(null);
+      } finally {
+        setIsExplaining(false);
+      }
+    };
+
+    void runExplain();
+  }, [question, isExplaining, selectedAnswer, textAnswer, lang]);
 
   const handleMicToggle = useCallback(() => {
     if (isListening) {
@@ -430,6 +465,78 @@ export default function DiagnosticTest() {
               <p className="text-sm font-medium text-navy">{feedback.message}</p>
               {feedback.explanation && (
                 <p className="mt-1 text-xs text-gray-500">{feedback.explanation}</p>
+              )}
+
+              {!aiExplanation && (
+                <button
+                  onClick={handleExplain}
+                  disabled={isExplaining}
+                  className="mt-3 flex items-center gap-2 rounded-lg bg-gold/20 px-4 py-2 text-sm font-medium text-navy transition-all hover:bg-gold/30 disabled:opacity-50"
+                >
+                  <Lightbulb className="h-4 w-4 text-gold" strokeWidth={2} />
+                  {isExplaining
+                    ? lang === "es" ? "Analizando..." : "Breaking it down..."
+                    : lang === "es" ? "Explícamelo" : "Break it down for me"}
+                </button>
+              )}
+
+              {aiExplanation && (
+                <div className="mt-3 space-y-3 rounded-xl border border-gold/30 bg-white p-4">
+                  <div className="flex items-center gap-2">
+                    <Lightbulb className="h-4 w-4 text-gold" strokeWidth={2} />
+                    <span className="text-sm font-bold text-navy">
+                      {lang === "es" ? "Desglose de Saber" : "Saber Breakdown"}
+                    </span>
+                  </div>
+
+                  {aiExplanation.keywords.length > 0 && (
+                    <div>
+                      <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-gray-400">
+                        {lang === "es" ? "Palabras clave" : "Key Words"}
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {aiExplanation.keywords.map((kw) => (
+                          <span
+                            key={kw.word}
+                            className="inline-flex flex-col rounded-lg bg-teal/10 px-3 py-1.5"
+                          >
+                            <span className="text-xs font-bold text-teal">{kw.word}</span>
+                            <span className="text-xs text-gray-500">{kw.definition}</span>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div>
+                    <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-gray-400">
+                      {lang === "es" ? "El concepto" : "The Concept"}
+                    </p>
+                    <p className="text-sm leading-relaxed text-navy">
+                      {aiExplanation.conceptExplanation}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-gray-400">
+                      {lang === "es" ? "Paso a paso" : "Step by Step"}
+                    </p>
+                    <p className="text-sm leading-relaxed text-navy">
+                      {aiExplanation.stepByStep}
+                    </p>
+                  </div>
+
+                  {aiExplanation.languageTip && (
+                    <div className="rounded-lg bg-gold/10 px-3 py-2">
+                      <p className="text-xs font-semibold text-navy">
+                        {lang === "es" ? "Tip de lenguaje" : "Language Tip"}
+                      </p>
+                      <p className="text-xs leading-relaxed text-gray-600">
+                        {aiExplanation.languageTip}
+                      </p>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           )}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Star } from "lucide-react";
+import { Star, ClipboardList } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
 import QuestCard from "@/components/QuestCard";
@@ -185,6 +185,22 @@ export default function StudentDashboard() {
               </div>
             </div>
           </div>
+
+          {/* Start Diagnostic CTA */}
+          <button
+            onClick={() => {
+              router.push(`/test?studentId=${profile?.student.id ?? studentId ?? 1}`);
+            }}
+            className="mb-8 flex w-full items-center gap-4 rounded-xl bg-gradient-to-r from-teal to-teal/80 p-5 text-left text-white shadow-md transition-all duration-200 hover:scale-[1.01] hover:shadow-lg"
+          >
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/20">
+              <ClipboardList className="h-6 w-6" strokeWidth={1.5} />
+            </div>
+            <div>
+              <h3 className="text-base font-bold">{t("student.startDiagnostic")}</h3>
+              <p className="text-sm text-white/70">{t("student.startDiagnosticDesc")}</p>
+            </div>
+          </button>
 
           <div className="flex gap-8">
             <div className="flex-1">

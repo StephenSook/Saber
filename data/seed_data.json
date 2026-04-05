@@ -3,8 +3,8 @@
     {
       "id": 1,
       "name": "Ms. Elena Vasquez",
-      "email": "e.vasquez@gacountyschools.edu",
-      "password_hash": "demo_hash_not_for_production"
+      "email": "demo@saber.edu",
+      "demo_password": "password"
     }
   ],
 
@@ -32,6 +32,8 @@
       "id": 1,
       "class_id": 1,
       "name": "Maria Garcia",
+      "email": "maria@saber.edu",
+      "demo_password": "password",
       "xp": 280,
       "level": 3,
       "streak_days": 4,
@@ -152,6 +154,8 @@
       "id": 13,
       "class_id": 1,
       "name": "Emma Johnson",
+      "email": "emma@saber.edu",
+      "demo_password": "password",
       "xp": 60,
       "level": 1,
       "streak_days": 0,
@@ -202,6 +206,8 @@
       "id": 18,
       "class_id": 1,
       "name": "Mia Rodriguez",
+      "email": "mia@saber.edu",
+      "demo_password": "password",
       "xp": 120,
       "level": 2,
       "streak_days": 2,
@@ -348,6 +354,195 @@
       "classification": "MIXED",
       "explanation": "Mia answered incorrectly in both languages, but her Spanish response (A) was closer to correct than her English response. She has a partial understanding of triangle area with some language interference.",
       "created_at": "2026-04-03T11:35:00"
+    },
+    {
+      "id": 9,
+      "student_id": 2,
+      "question_id": "ELA-5-001",
+      "student_answer_es": "B",
+      "classification": "LANGUAGE",
+      "explanation": "Carlos answered correctly in Spanish. He understands inference — the English phrasing 'most likely suggests' confused him.",
+      "created_at": "2026-04-03T12:00:00"
+    },
+    {
+      "id": 10,
+      "student_id": 2,
+      "question_id": "ELA-5-002",
+      "student_answer_es": "C",
+      "classification": "LANGUAGE",
+      "explanation": "Carlos correctly identified the author's purpose in Spanish. The academic English term 'primary purpose' was the barrier.",
+      "created_at": "2026-04-03T12:05:00"
+    },
+    {
+      "id": 11,
+      "student_id": 3,
+      "question_id": "MATH-5-002",
+      "student_answer_es": "B",
+      "classification": "LANGUAGE",
+      "explanation": "Sofia correctly computed the area of the triangle in Spanish. She was confused by the English terms 'base' and 'height'.",
+      "created_at": "2026-04-03T12:10:00"
+    },
+    {
+      "id": 12,
+      "student_id": 4,
+      "question_id": "SCI-5-001",
+      "student_answer_es": "C",
+      "classification": "LANGUAGE",
+      "explanation": "Diego answered correctly in Spanish. The English word 'primarily' in 'primarily responsible' caused confusion.",
+      "created_at": "2026-04-03T12:20:00"
+    },
+    {
+      "id": 13,
+      "student_id": 5,
+      "question_id": "MATH-5-001",
+      "student_answer_es": "B",
+      "classification": "LANGUAGE",
+      "explanation": "Isabella answered correctly in Spanish. She understands ratios — the English word problem phrasing was the barrier.",
+      "created_at": "2026-04-03T12:30:00"
+    },
+    {
+      "id": 14,
+      "student_id": 6,
+      "question_id": "HIST-5-001",
+      "student_answer_es": "B",
+      "classification": "LANGUAGE",
+      "explanation": "Mateo answered correctly in Spanish. He understands the historical cause — the phrase 'a direct consequence of' in English confused him.",
+      "created_at": "2026-04-03T12:40:00"
+    },
+    {
+      "id": 15,
+      "student_id": 7,
+      "question_id": "MATH-5-003",
+      "student_answer_es": "B",
+      "classification": "LANGUAGE",
+      "explanation": "Valentina correctly identified 0.75 as equivalent to 3/4 in Spanish. The English phrasing tripped her up.",
+      "created_at": "2026-04-03T12:50:00"
+    },
+    {
+      "id": 16,
+      "student_id": 8,
+      "question_id": "ELA-5-001",
+      "student_answer_es": "B",
+      "classification": "LANGUAGE",
+      "explanation": "Lucas answered correctly in Spanish. The English inference question phrasing was the barrier.",
+      "created_at": "2026-04-03T13:00:00"
+    },
+    {
+      "id": 17,
+      "student_id": 9,
+      "question_id": "SCI-5-001",
+      "student_answer_es": "C",
+      "classification": "LANGUAGE",
+      "explanation": "Camila answered correctly in Spanish. The scientific English vocabulary was the barrier.",
+      "created_at": "2026-04-03T13:10:00"
+    },
+    {
+      "id": 18,
+      "student_id": 10,
+      "question_id": "HIST-5-001",
+      "student_answer_es": "B",
+      "classification": "LANGUAGE",
+      "explanation": "Alejandro answered correctly in Spanish. He knows the history — 'direct consequence' in English was confusing.",
+      "created_at": "2026-04-03T13:20:00"
+    },
+    {
+      "id": 19,
+      "student_id": 11,
+      "question_id": "MATH-5-001",
+      "student_answer_es": "B",
+      "classification": "LANGUAGE",
+      "explanation": "Ana answered correctly in Spanish. The English word problem vocabulary was the barrier.",
+      "created_at": "2026-04-03T13:30:00"
+    },
+    {
+      "id": 20,
+      "student_id": 12,
+      "question_id": "ELA-5-002",
+      "student_answer_es": "C",
+      "classification": "LANGUAGE",
+      "explanation": "Rosa answered correctly in Spanish. The phrase 'primary purpose' in English confused her.",
+      "created_at": "2026-04-03T13:40:00"
+    },
+    {
+      "id": 21,
+      "student_id": 14,
+      "question_id": "SCI-5-001",
+      "student_answer_es": "A",
+      "classification": "CONTENT",
+      "explanation": "Noah answered incorrectly in both English and Spanish. He does not yet understand which organelle is responsible for photosynthesis.",
+      "created_at": "2026-04-03T14:00:00"
+    },
+    {
+      "id": 22,
+      "student_id": 14,
+      "question_id": "SCI-5-002",
+      "student_answer_es": "D",
+      "classification": "CONTENT",
+      "explanation": "Noah answered incorrectly in both languages. He confuses chemical and physical changes — this is a content gap.",
+      "created_at": "2026-04-03T14:05:00"
+    },
+    {
+      "id": 23,
+      "student_id": 15,
+      "question_id": "ELA-5-001",
+      "student_answer_es": "A",
+      "classification": "CONTENT",
+      "explanation": "Olivia answered incorrectly in both languages. She struggles with making inferences from text — not a language issue.",
+      "created_at": "2026-04-03T14:10:00"
+    },
+    {
+      "id": 24,
+      "student_id": 16,
+      "question_id": "MATH-5-001",
+      "student_answer_es": "C",
+      "classification": "CONTENT",
+      "explanation": "Liam answered incorrectly in both English and Spanish. He does not yet understand proportional reasoning.",
+      "created_at": "2026-04-03T14:20:00"
+    },
+    {
+      "id": 25,
+      "student_id": 17,
+      "question_id": "HIST-5-001",
+      "student_answer_es": "D",
+      "classification": "CONTENT",
+      "explanation": "Ava answered incorrectly in both languages. She does not understand the causes of westward expansion — this is a content gap.",
+      "created_at": "2026-04-03T14:30:00"
+    },
+    {
+      "id": 26,
+      "student_id": 19,
+      "question_id": "ELA-5-001",
+      "student_answer_es": "B",
+      "classification": "LANGUAGE",
+      "explanation": "James answered correctly in Spanish but not English. The inference phrasing was the barrier.",
+      "created_at": "2026-04-03T14:40:00"
+    },
+    {
+      "id": 27,
+      "student_id": 19,
+      "question_id": "SCI-5-001",
+      "student_answer_es": "A",
+      "classification": "CONTENT",
+      "explanation": "James answered incorrectly in both languages for the science question. He has both language and content gaps.",
+      "created_at": "2026-04-03T14:45:00"
+    },
+    {
+      "id": 28,
+      "student_id": 20,
+      "question_id": "MATH-5-003",
+      "student_answer_es": "B",
+      "classification": "LANGUAGE",
+      "explanation": "Ethan answered correctly in Spanish. The English phrasing was confusing.",
+      "created_at": "2026-04-03T14:50:00"
+    },
+    {
+      "id": 29,
+      "student_id": 20,
+      "question_id": "HIST-5-001",
+      "student_answer_es": "D",
+      "classification": "CONTENT",
+      "explanation": "Ethan answered incorrectly in both languages for history. He has mixed gaps — language barriers in some subjects and content gaps in others.",
+      "created_at": "2026-04-03T14:55:00"
     }
   ],
 

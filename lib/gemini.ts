@@ -81,6 +81,36 @@ Return a JSON object with exactly:
   "feedback": string
 }
 `.trim(),
+  explainQuestion: `
+You are a bilingual tutor helping a Hispanic English Language Learner understand a question they got wrong.
+The student is in elementary or middle school. Speak directly to the student using simple, encouraging language.
+Write your response in the student's preferred language (given below).
+
+Your job:
+1. Identify the KEY WORDS or phrases in the question that are most important to understand.
+2. For each key word, give a short, clear definition or explanation the student can grasp.
+3. Explain the CONCEPT being tested in plain terms — what the question is really asking.
+4. Walk through HOW to arrive at the correct answer step by step.
+5. If the English wording uses idioms, tricky phrasing, or academic vocabulary that could confuse an ELL student, call that out specifically and explain what it means in plain language.
+
+Keep your tone warm and supportive. Never say the student is wrong — focus on helping them see the path to the right answer.
+
+Response language: {{responseLang}}
+
+Subject: {{subject}}
+Question (English): {{questionEn}}
+Question (Spanish): {{questionEs}}
+Correct answer: {{correctAnswer}}
+Student's answer: {{studentAnswer}}
+
+Return a JSON object with exactly:
+{
+  "keywords": [{ "word": string, "definition": string }],
+  "conceptExplanation": string,
+  "stepByStep": string,
+  "languageTip": string | null
+}
+`.trim(),
 } as const;
 
 export interface SpanishQuestion {
@@ -103,6 +133,13 @@ export interface ClassificationResult {
 export interface EvalResult {
   correct: boolean;
   feedback: string;
+}
+
+export interface QuestionExplanation {
+  keywords: Array<{ word: string; definition: string }>;
+  conceptExplanation: string;
+  stepByStep: string;
+  languageTip: string | null;
 }
 
 const DEFAULT_MODEL_NAME = "gemini-1.5-flash";
@@ -138,6 +175,20 @@ const evalResultSchema: z.ZodType<EvalResult> = z
   .object({
     correct: z.boolean(),
     feedback: z.string().trim().min(1),
+  })
+  .strict();
+
+const questionExplanationSchema: z.ZodType<QuestionExplanation> = z
+  .object({
+    keywords: z.array(
+      z.object({
+        word: z.string().trim().min(1),
+        definition: z.string().trim().min(1),
+      }),
+    ),
+    conceptExplanation: z.string().trim().min(1),
+    stepByStep: z.string().trim().min(1),
+    languageTip: z.string().trim().min(1).nullable(),
   })
   .strict();
 
@@ -213,6 +264,41 @@ export async function evaluateSpanishAnswer(
       error,
       "Failed to evaluate the Spanish answer.",
       "GEMINI_EVALUATE_SPANISH_ANSWER_FAILED",
+    );
+  }
+}
+
+/**
+ * Breaks down a question the student got wrong — highlights key words,
+ * explains the concept, and walks through the correct answer step by step.
+ */
+export async function explainQuestion(input: {
+  questionEn: string;
+  questionEs: string;
+  correctAnswer: string;
+  studentAnswer: string;
+  subject: string;
+  responseLang: "en" | "es";
+}): Promise<QuestionExplanation> {
+  try {
+    const promptText = buildPrompt(prompts.explainQuestion, {
+      questionEn: ensureNonEmptyString("questionEn", input.questionEn),
+      questionEs: ensureNonEmptyString("questionEs", input.questionEs),
+      correctAnswer: ensureNonEmptyString("correctAnswer", input.correctAnswer),
+      studentAnswer: ensureNonEmptyString("studentAnswer", input.studentAnswer),
+      subject: ensureNonEmptyString("subject", input.subject),
+      responseLang: input.responseLang === "es" ? "Spanish" : "English",
+    });
+
+    return await requestStructuredJson<QuestionExplanation>(
+      promptText,
+      questionExplanationSchema,
+    );
+  } catch (error: unknown) {
+    throw wrapGeminiError(
+      error,
+      "Failed to generate the question explanation.",
+      "GEMINI_EXPLAIN_QUESTION_FAILED",
     );
   }
 }

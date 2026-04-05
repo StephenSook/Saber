@@ -1,4 +1,5 @@
 import BetterSqlite3 from "better-sqlite3";
+import bcrypt from "bcryptjs";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
@@ -105,24 +106,57 @@ const insertRows = database.transaction(
   },
 );
 
-resetTables();
+async function hashDemoPasswords(
+  rows: Record<string, unknown>[],
+): Promise<Record<string, unknown>[]> {
+  const result: Record<string, unknown>[] = [];
 
-database.pragma("foreign_keys = OFF");
+  for (const row of rows) {
+    if (typeof row.demo_password === "string" && row.demo_password.length > 0) {
+      const password_hash = await bcrypt.hash(row.demo_password, 10);
+      const { demo_password: _, ...rest } = row;
+      result.push({ ...rest, password_hash });
+    } else {
+      const { demo_password: _, ...rest } = row;
+      result.push(rest);
+    }
+  }
 
-const insertedCounts = {
-  teachers: insertRows("teachers", seedPayload.teachers ?? []),
-  classes: insertRows("classes", seedPayload.classes ?? []),
-  students: insertRows("students", seedPayload.students ?? []),
-  questions: insertRows("questions", seededQuestions),
-  uploads: insertRows("uploads", seedPayload.uploads ?? []),
-  missed_items: insertRows("missed_items", seedPayload.missed_items ?? []),
-  diagnostics: insertRows("diagnostics", seedPayload.diagnostics ?? []),
-  quests: insertRows("quests", seedPayload.quests ?? []),
-  quest_items: insertRows("quest_items", seedPayload.quest_items ?? []),
-  xp_logs: insertRows("xp_logs", seedPayload.xp_logs ?? []),
-};
+  return result;
+}
 
-database.pragma("foreign_keys = ON");
+async function seed(): Promise<void> {
+  resetTables();
 
-console.log("Seeded database at", databasePath);
-console.log(JSON.stringify(insertedCounts, null, 2));
+  database.pragma("foreign_keys = OFF");
+
+  const classesWithJoinCode = (seedPayload.classes ?? []).map(
+    (cls: Record<string, unknown>, index: number) => ({
+      ...cls,
+      join_code: cls.join_code ?? `DEMO${String(index + 1).padStart(2, "0")}`,
+    }),
+  );
+
+  const teachers = await hashDemoPasswords(seedPayload.teachers ?? []);
+  const students = await hashDemoPasswords(seedPayload.students ?? []);
+
+  const insertedCounts = {
+    teachers: insertRows("teachers", teachers),
+    classes: insertRows("classes", classesWithJoinCode),
+    students: insertRows("students", students),
+    questions: insertRows("questions", seededQuestions),
+    uploads: insertRows("uploads", seedPayload.uploads ?? []),
+    missed_items: insertRows("missed_items", seedPayload.missed_items ?? []),
+    diagnostics: insertRows("diagnostics", seedPayload.diagnostics ?? []),
+    quests: insertRows("quests", seedPayload.quests ?? []),
+    quest_items: insertRows("quest_items", seedPayload.quest_items ?? []),
+    xp_logs: insertRows("xp_logs", seedPayload.xp_logs ?? []),
+  };
+
+  database.pragma("foreign_keys = ON");
+
+  console.log("Seeded database at", databasePath);
+  console.log(JSON.stringify(insertedCounts, null, 2));
+}
+
+void seed();

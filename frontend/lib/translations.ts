@@ -110,6 +110,11 @@ const translations: Record<string, TranslationEntry> = {
   "student.viewAll": { en: "View All", es: "Ver Todo" },
   "student.showLess": { en: "Show Less", es: "Mostrar Menos" },
   "student.exercises": { en: "EXERCISES", es: "EJERCICIOS" },
+  "student.startDiagnostic": { en: "Start Diagnostic", es: "Iniciar Diagnóstico" },
+  "student.startDiagnosticDesc": {
+    en: "Answer questions in Spanish to show what you really know!",
+    es: "¡Responde preguntas en español para demostrar lo que realmente sabes!",
+  },
 
   // ── Leaderboard ──
   "leaderboard.title": { en: "Class Hall of Fame", es: "Salón de la Fama" },
