@@ -1,17 +1,32 @@
 "use client";
 
 import { useState } from "react";
-import { mockLeaderboard, getInitials, getInitialsBgColor } from "@/lib/mockData";
 import { useLanguage } from "@/components/LanguageProvider";
+import { getInitials, getInitialsBgColor } from "@/lib/ui";
+
+interface LeaderboardEntry {
+  rank: number;
+  studentId: number;
+  studentName: string;
+  weeklyXp: number;
+  totalXp: number;
+  level: number;
+  streakDays: number;
+  lastActive: string | null;
+}
 
 interface LeaderboardProps {
+  entries: LeaderboardEntry[];
   currentStudentName?: string;
 }
 
-export default function Leaderboard({ currentStudentName }: LeaderboardProps) {
+export default function Leaderboard({
+  entries,
+  currentStudentName,
+}: LeaderboardProps) {
   const { t } = useLanguage();
   const [showAll, setShowAll] = useState(false);
-  const entries = showAll ? mockLeaderboard : mockLeaderboard.slice(0, 4);
+  const visibleEntries = showAll ? entries : entries.slice(0, 4);
 
   return (
     <div className="rounded-xl bg-white p-5 shadow-sm">
@@ -19,20 +34,20 @@ export default function Leaderboard({ currentStudentName }: LeaderboardProps) {
       <p className="mb-4 text-xs text-gray-400">{t("leaderboard.subtitle")}</p>
 
       <div className="space-y-3">
-        {entries.map((entry, index) => {
-          const initials = getInitials(entry.name);
-          const bgColor = getInitialsBgColor(entry.name);
-          const isCurrent = entry.name === currentStudentName;
+        {visibleEntries.map((entry) => {
+          const initials = getInitials(entry.studentName);
+          const bgColor = getInitialsBgColor(entry.studentName);
+          const isCurrent = entry.studentName === currentStudentName;
 
           return (
             <div
-              key={entry.name}
+              key={entry.studentId}
               className={`flex items-center gap-3 rounded-lg px-3 py-2 ${
                 isCurrent ? "bg-teal/5" : ""
               }`}
             >
               <span className="w-5 text-sm font-bold text-gray-400">
-                {index + 1}
+                {entry.rank}
               </span>
               <div
                 className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold text-white ${bgColor}`}
@@ -41,12 +56,12 @@ export default function Leaderboard({ currentStudentName }: LeaderboardProps) {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="truncate text-sm font-medium text-navy">
-                  {entry.name.split(" ")[0]} {entry.name.split(" ")[1]?.[0]}.
+                  {entry.studentName.split(" ")[0]} {entry.studentName.split(" ")[1]?.[0]}.
                 </p>
                 <p className="text-xs text-gray-400">LEVEL {entry.level}</p>
               </div>
               <span className="text-sm font-bold text-teal">
-                {entry.weeklyXP} XP
+                {entry.weeklyXp} XP
               </span>
             </div>
           );

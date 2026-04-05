@@ -1,16 +1,26 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { X, Check, Trophy, ArrowLeft } from "lucide-react";
 import Link from "next/link";
-import { mockDiagnosticQuestions } from "@/lib/mockData";
+import { useSearchParams } from "next/navigation";
 import XPAnimation from "@/components/XPAnimation";
 import MicButton from "@/components/MicButton";
 import useSpeechToText from "@/hooks/useSpeechToText";
 import { useLanguage } from "@/components/LanguageProvider";
+import {
+  getStudentDashboard,
+  getStudentDiagnostic,
+  submitDiagnosticAnswer,
+  type StudentDiagnosticResponseData,
+  type StudentProfileResponseData,
+} from "@/lib/api";
 
 export default function QuestView() {
+  const searchParams = useSearchParams();
   const { t } = useLanguage();
+  const studentId = parseStudentId(searchParams.get("studentId"));
+  const questId = parseQuestId(searchParams.get("questId"));
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
   const [feedback, setFeedback] = useState<{ correct: boolean } | null>(null);
@@ -18,15 +28,66 @@ export default function QuestView() {
   const [totalXP, setTotalXP] = useState(0);
   const [completed, setCompleted] = useState(false);
   const [textAnswer, setTextAnswer] = useState("");
+  const [profile, setProfile] = useState<StudentProfileResponseData | null>(null);
+  const [diagnostic, setDiagnostic] = useState<StudentDiagnosticResponseData | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const { transcript, isListening, startListening, stopListening, resetTranscript } =
     useSpeechToText("es-ES");
 
-  // Use diagnostic questions as quest questions
-  const questions = mockDiagnosticQuestions.slice(0, 4);
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadData = async (): Promise<void> => {
+      try {
+        const [nextProfile, nextDiagnostic] = await Promise.all([
+          getStudentDashboard(studentId),
+          getStudentDiagnostic(studentId),
+        ]);
+
+        if (!cancelled) {
+          setProfile(nextProfile);
+          setDiagnostic(nextDiagnostic);
+          setError(null);
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setError(
+            loadError instanceof Error ? loadError.message : "Failed to load the quest.",
+          );
+        }
+      }
+    };
+
+    void loadData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [studentId]);
+
+  const quest = useMemo(() => {
+    return profile?.quests.find((entry) => entry.id === questId) ?? profile?.quests[0] ?? null;
+  }, [profile, questId]);
+
+  const questions = useMemo(() => {
+    const pendingQuestions =
+      diagnostic?.questions.filter((question) => !question.isCompleted) ?? [];
+
+    if (quest === null) {
+      return pendingQuestions.slice(0, 4);
+    }
+
+    const matchingQuestions = pendingQuestions.filter((question) => {
+      return question.skillTag === quest.skillTag;
+    });
+
+    return (matchingQuestions.length > 0 ? matchingQuestions : pendingQuestions).slice(0, 4);
+  }, [diagnostic, quest]);
+
   const question = questions[currentIndex];
   const totalQuestions = questions.length;
-  const progressPct = ((currentIndex + 1) / totalQuestions) * 100;
+  const progressPct = totalQuestions === 0 ? 0 : ((currentIndex + 1) / totalQuestions) * 100;
   const letters = ["A", "B", "C", "D"];
 
   const handleSelect = useCallback(
@@ -38,16 +99,38 @@ export default function QuestView() {
   );
 
   const handleSubmit = useCallback(() => {
-    if (selectedAnswer === null) return;
-
-    const isCorrect = selectedAnswer === question.correctAnswer;
-    if (isCorrect) {
-      setTotalXP((xp) => xp + 30);
-      setShowXP(true);
-      setTimeout(() => setShowXP(false), 1100);
+    if (question === undefined || selectedAnswer === null) {
+      return;
     }
-    setFeedback({ correct: isCorrect });
-  }, [selectedAnswer, question]);
+
+    const answerEs =
+      question.choicesEs?.[selectedAnswer] ?? question.choicesEn?.[selectedAnswer] ?? "";
+
+    const submitAnswer = async (): Promise<void> => {
+      try {
+        const answerResult = await submitDiagnosticAnswer({
+          studentId,
+          questionId: question.id,
+          answerEs,
+          inputMethod: "text",
+        });
+
+        if (answerResult.correct) {
+          setTotalXP((xp) => xp + answerResult.xpEarned);
+          setShowXP(true);
+          setTimeout(() => setShowXP(false), 1100);
+        }
+
+        setFeedback({ correct: answerResult.correct });
+      } catch (submitError) {
+        setError(
+          submitError instanceof Error ? submitError.message : "Failed to submit the quest answer.",
+        );
+      }
+    };
+
+    void submitAnswer();
+  }, [question, selectedAnswer, studentId]);
 
   const handleContinue = useCallback(() => {
     if (currentIndex < totalQuestions - 1) {
@@ -71,7 +154,6 @@ export default function QuestView() {
     }
   }, [isListening, startListening, stopListening, transcript, resetTranscript]);
 
-  // Completion screen
   if (completed) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-offwhite px-4">
@@ -81,14 +163,14 @@ export default function QuestView() {
           </div>
           <h2 className="text-2xl font-bold text-navy">{t("quest.complete")}</h2>
           <p className="mt-2 text-sm text-gray-400">
-            {t("quest.masterMath")}
+            {quest?.skillTag ?? t("quest.masterMath")}
           </p>
           <div className="my-6 rounded-xl bg-gold/10 px-6 py-4">
             <p className="text-3xl font-bold text-navy">{totalXP} XP</p>
             <p className="text-xs text-gray-500">{t("quest.earned")}</p>
           </div>
           <Link
-            href="/student"
+            href={`/student?studentId=${studentId}`}
             className="inline-flex items-center gap-2 rounded-lg bg-teal px-6 py-3 text-sm font-medium text-white transition-all duration-200 hover:scale-[1.02]"
           >
             <ArrowLeft className="h-4 w-4" />
@@ -99,12 +181,27 @@ export default function QuestView() {
     );
   }
 
+  if (error !== null && diagnostic === null) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-offwhite px-4 text-sm text-navy">
+        {error}
+      </div>
+    );
+  }
+
+  if (question === undefined) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-offwhite px-4 text-sm text-gray-500">
+        No quest questions are ready yet for this student.
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-h-screen flex-col bg-offwhite">
-      {/* Top Bar */}
       <header className="flex items-center justify-between bg-white px-6 py-3 shadow-sm">
         <Link
-          href="/student"
+          href={`/student?studentId=${studentId}`}
           className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
         >
           <X className="h-5 w-5" />
@@ -112,7 +209,7 @@ export default function QuestView() {
         <div>
           <span className="text-lg font-bold text-teal">Saber</span>
           <span className="ml-3 text-sm text-gray-400">
-            {t("quest.masterMath")}
+            {quest?.skillTag ?? t("quest.masterMath")}
           </span>
         </div>
         <div className="flex items-center gap-3">
@@ -128,7 +225,6 @@ export default function QuestView() {
         </div>
       </header>
 
-      {/* Question Area */}
       <main className="flex flex-1 flex-col items-center px-4 py-8">
         <div className="w-full max-w-2xl">
           <p className="mb-6 text-center text-xs font-semibold uppercase tracking-widest text-gray-400">
@@ -142,14 +238,14 @@ export default function QuestView() {
             {question.questionEn}
           </p>
 
-          {/* Answer Cards */}
           <div className="relative mb-6 grid grid-cols-2 gap-3">
             <XPAnimation xp={30} show={showXP} />
 
-            {question.choicesEs.map((choice, index) => {
+            {(question.choicesEs ?? []).map((choice, index) => {
               const isSelected = selectedAnswer === index;
-              const isCorrect = feedback && index === question.correctAnswer;
-              const isWrong = feedback && isSelected && index !== question.correctAnswer;
+              const correctChoiceIndex = getChoiceIndex(question.correctAnswer);
+              const isCorrect = feedback && index === correctChoiceIndex;
+              const isWrong = feedback && isSelected && index !== correctChoiceIndex;
 
               return (
                 <button
@@ -171,7 +267,7 @@ export default function QuestView() {
                   </span>
                   <span className="text-sm font-medium text-navy">{choice}</span>
                   <span className="mt-0.5 text-xs text-gray-400">
-                    {question.choicesEn[index]}
+                    {question.choicesEn?.[index]}
                   </span>
                   {(isSelected && !feedback) || isCorrect ? (
                     <div className="absolute right-3 top-3">
@@ -189,7 +285,6 @@ export default function QuestView() {
             })}
           </div>
 
-          {/* Text input + mic */}
           <div className="mb-6 rounded-xl bg-white p-4 shadow-sm">
             <div className="flex items-center gap-3">
               <input
@@ -203,7 +298,12 @@ export default function QuestView() {
             </div>
           </div>
 
-          {/* Button */}
+          {error && (
+            <div className="mb-4 rounded-xl border border-coral/20 bg-coral/5 p-4 text-sm text-navy">
+              {error}
+            </div>
+          )}
+
           {!feedback ? (
             <button
               onClick={handleSubmit}
@@ -224,4 +324,35 @@ export default function QuestView() {
       </main>
     </div>
   );
+}
+
+function parseStudentId(value: string | null): number {
+  if (value === null) {
+    return 1;
+  }
+
+  const parsedValue = Number(value);
+
+  return Number.isInteger(parsedValue) && parsedValue > 0 ? parsedValue : 1;
+}
+
+function parseQuestId(value: string | null): number | null {
+  if (value === null) {
+    return null;
+  }
+
+  const parsedValue = Number(value);
+
+  return Number.isInteger(parsedValue) && parsedValue > 0 ? parsedValue : null;
+}
+
+function getChoiceIndex(correctAnswer: string): number | null {
+  const choiceIndexMap: Record<string, number> = {
+    a: 0,
+    b: 1,
+    c: 2,
+    d: 3,
+  };
+
+  return choiceIndexMap[correctAnswer.trim().toLowerCase()] ?? null;
 }

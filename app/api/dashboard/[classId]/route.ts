@@ -28,6 +28,7 @@ interface StudentDiagnosticSummary {
   name: string;
   xp: number;
   level: number;
+  lastActive: string | null;
   gap_counts: StudentGapCounts;
   color_code: DashboardColorCode;
 }
@@ -50,6 +51,11 @@ interface ClassStats {
 }
 
 interface DashboardResponseData {
+  classroom: {
+    id: number;
+    name: string;
+    gradeLevel: number;
+  };
   students: StudentDiagnosticSummary[];
   classStats: ClassStats;
 }
@@ -63,19 +69,25 @@ export async function OPTIONS(): Promise<Response> {
  */
 export async function GET(
   request: Request,
-  context: { params: { classId: string } },
+  context: { params: Promise<{ classId: string }> },
 ): Promise<Response> {
   void request;
 
   try {
-    const classId = parseClassId(context.params.classId);
+    const { classId: rawClassId } = await context.params;
+    const classId = parseClassId(rawClassId);
 
-    getClassById(classId);
+    const classRecord = getClassById(classId);
 
     const dashboardRows = getClassDashboard(classId);
     const subjectGapCounts = getClassSubjectGapCounts(classId);
     const students = dashboardRows.map(mapStudentDiagnosticSummary);
     const responseData: DashboardResponseData = {
+      classroom: {
+        id: classRecord.id,
+        name: classRecord.name,
+        gradeLevel: classRecord.grade_level,
+      },
       students,
       classStats: buildClassStats(students, subjectGapCounts),
     };
@@ -115,6 +127,7 @@ function mapStudentDiagnosticSummary(
     name: summary.student_name,
     xp: summary.xp,
     level: summary.level,
+    lastActive: summary.last_active,
     gap_counts: gapCounts,
     color_code: getColorCode(gapCounts),
   };

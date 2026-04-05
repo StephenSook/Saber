@@ -7,11 +7,14 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
+    "db:seed": "tsx scripts/seed_db.ts",
     "smoke:test": "tsx scripts/smoke_test.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
     "better-sqlite3": "^12.8.0",
+    "framer-motion": "^12.38.0",
+    "lucide-react": "^1.7.0",
     "next": "^16.2.2",
     "papaparse": "^5.5.3",
     "react": "^19.2.4",
@@ -19,7 +22,13 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.14",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^25.5.2",
+    "@types/papaparse": "^5.3.16",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "tailwindcss": "^4.1.14",
     "tsx": "^4.7.0",
     "typescript": "^6.0.2"
   }

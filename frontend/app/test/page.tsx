@@ -1,22 +1,33 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { X, Check, Sparkles } from "lucide-react";
 import Link from "next/link";
-import { mockDiagnosticQuestions } from "@/lib/mockData";
+import { useSearchParams } from "next/navigation";
 import XPAnimation from "@/components/XPAnimation";
 import MicButton from "@/components/MicButton";
 import useSpeechToText from "@/hooks/useSpeechToText";
 import { useLanguage } from "@/components/LanguageProvider";
 import LanguageToggle from "@/components/ui/LanguageToggle";
+import {
+  classifyDiagnosticAnswer,
+  getStudentDashboard,
+  getStudentDiagnostic,
+  submitDiagnosticAnswer,
+  type StudentDiagnosticResponseData,
+  type StudentProfileResponseData,
+} from "@/lib/api";
 
 interface AnswerFeedback {
   correct: boolean;
-  messageKey: string;
+  message: string;
+  explanation?: string | null;
 }
 
 export default function DiagnosticTest() {
+  const searchParams = useSearchParams();
   const { lang, t } = useLanguage();
+  const studentId = parseStudentId(searchParams.get("studentId"));
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
   const [feedback, setFeedback] = useState<AnswerFeedback | null>(null);
@@ -25,14 +36,63 @@ export default function DiagnosticTest() {
   const [totalXP, setTotalXP] = useState(0);
   const [correctCount, setCorrectCount] = useState(0);
   const [showResults, setShowResults] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [profile, setProfile] = useState<StudentProfileResponseData | null>(null);
+  const [diagnostic, setDiagnostic] = useState<StudentDiagnosticResponseData | null>(null);
+  const [questions, setQuestions] = useState<
+    StudentDiagnosticResponseData["questions"]
+  >([]);
+  const [usedSpeechInput, setUsedSpeechInput] = useState(false);
 
   const { transcript, isListening, startListening, stopListening, resetTranscript } =
     useSpeechToText("es-ES");
 
-  const questions = mockDiagnosticQuestions;
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadData = async (): Promise<void> => {
+      try {
+        const [nextProfile, nextDiagnostic] = await Promise.all([
+          getStudentDashboard(studentId),
+          getStudentDiagnostic(studentId),
+        ]);
+
+        if (cancelled) {
+          return;
+        }
+
+        setProfile(nextProfile);
+        setDiagnostic(nextDiagnostic);
+        setQuestions(nextDiagnostic.questions.filter((question) => !question.isCompleted));
+        setError(null);
+      } catch (loadError) {
+        if (!cancelled) {
+          setError(
+            loadError instanceof Error
+              ? loadError.message
+              : "Failed to load the diagnostic.",
+          );
+        }
+      }
+    };
+
+    void loadData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [studentId]);
+
+  useEffect(() => {
+    if (questions.length === 0 && diagnostic !== null) {
+      setShowResults(diagnostic.answeredQuestions > 0);
+    }
+  }, [diagnostic, questions]);
+
   const question = questions[currentIndex];
   const totalQuestions = questions.length;
-  const progress = ((currentIndex + 1) / totalQuestions) * 100;
+  const progress = totalQuestions === 0 ? 0 : ((currentIndex + 1) / totalQuestions) * 100;
 
   const questionText = lang === "es" ? question?.questionEs : question?.questionEn;
   const subtitleText = lang === "es" ? question?.questionEn : question?.questionEs;
@@ -45,20 +105,91 @@ export default function DiagnosticTest() {
   }, [feedback]);
 
   const handleSubmit = useCallback(() => {
-    if (selectedAnswer === null && !textAnswer && !transcript) return;
-
-    const isCorrect = selectedAnswer === question.correctAnswer;
-
-    if (isCorrect) {
-      setCorrectCount((c) => c + 1);
-      setTotalXP((xp) => xp + 50);
-      setShowXP(true);
-      setTimeout(() => setShowXP(false), 1100);
-      setFeedback({ correct: true, messageKey: "test.incredibleFocus" });
-    } else {
-      setFeedback({ correct: false, messageKey: "test.keepGoing" });
+    if (question === undefined) {
+      return;
     }
-  }, [selectedAnswer, textAnswer, transcript, question]);
+
+    const answerEs =
+      selectedAnswer !== null
+        ? (question.choicesEs?.[selectedAnswer] ?? question.choicesEn?.[selectedAnswer] ?? "")
+        : textAnswer.trim();
+
+    if (answerEs.length === 0) {
+      return;
+    }
+
+    const submitAnswer = async (): Promise<void> => {
+      setIsSubmitting(true);
+      setError(null);
+
+      try {
+        const answerResult = await submitDiagnosticAnswer({
+          studentId,
+          questionId: question.id,
+          answerEs,
+          inputMethod: usedSpeechInput ? "speech" : "text",
+        });
+
+        let explanation: string | null = null;
+        let latestClassification = question.latestClassification;
+
+        try {
+          const classificationResult = await classifyDiagnosticAnswer({
+            studentId,
+            questionId: question.id,
+            answerEs,
+          });
+          explanation = classificationResult.explanation;
+          latestClassification = classificationResult.classification;
+        } catch (classificationError) {
+          explanation =
+            classificationError instanceof Error ? classificationError.message : null;
+        }
+
+        if (answerResult.correct) {
+          setCorrectCount((count) => count + 1);
+          setTotalXP((xp) => xp + answerResult.xpEarned);
+          setShowXP(true);
+          setTimeout(() => setShowXP(false), 1100);
+          setFeedback({
+            correct: true,
+            message: t("test.incredibleFocus"),
+            explanation,
+          });
+        } else {
+          setFeedback({
+            correct: false,
+            message: t("test.keepGoing"),
+            explanation,
+          });
+        }
+
+        setQuestions((currentQuestions) =>
+          currentQuestions.map((currentQuestion) =>
+            currentQuestion.id === question.id
+              ? {
+                  ...currentQuestion,
+                  latestStudentAnswerEs: answerEs,
+                  latestClassification,
+                  latestExplanation: explanation,
+                  isCompleted: true,
+                }
+              : currentQuestion,
+          ),
+        );
+      } catch (submitError) {
+        setError(
+          submitError instanceof Error
+            ? submitError.message
+            : "Failed to submit the answer.",
+        );
+      } finally {
+        setIsSubmitting(false);
+      }
+    };
+
+    void submitAnswer();
+  }, [question, selectedAnswer, textAnswer, t, studentId, usedSpeechInput]);
 
   const handleContinue = useCallback(() => {
     if (currentIndex < totalQuestions - 1) {
@@ -66,6 +197,7 @@ export default function DiagnosticTest() {
       setSelectedAnswer(null);
       setFeedback(null);
       setTextAnswer("");
+      setUsedSpeechInput(false);
       resetTranscript();
     } else {
       setShowResults(true);
@@ -76,18 +208,32 @@ export default function DiagnosticTest() {
     if (isListening) {
       stopListening();
       setTextAnswer(transcript);
+      setUsedSpeechInput(true);
     } else {
       resetTranscript();
       startListening();
     }
   }, [isListening, startListening, stopListening, transcript, resetTranscript]);
 
-  // Results screen
-  if (showResults) {
-    const wrongCount = totalQuestions - correctCount;
-    const languageGaps = Math.ceil(wrongCount * 0.6);
-    const contentGaps = wrongCount - languageGaps;
+  const languageGaps = useMemo(() => {
+    return questions.filter((currentQuestion) => {
+      return currentQuestion.latestClassification === "LANGUAGE";
+    }).length;
+  }, [questions]);
 
+  const contentGaps = useMemo(() => {
+    return questions.filter((currentQuestion) => {
+      return currentQuestion.latestClassification === "CONTENT";
+    }).length;
+  }, [questions]);
+
+  const mixedGaps = useMemo(() => {
+    return questions.filter((currentQuestion) => {
+      return currentQuestion.latestClassification === "MIXED";
+    }).length;
+  }, [questions]);
+
+  if (showResults) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-offwhite px-4">
         <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-md text-center">
@@ -135,8 +281,14 @@ export default function DiagnosticTest() {
             {t("test.teacherResults")}
           </p>
 
+          {mixedGaps > 0 && (
+            <p className="mt-2 text-xs text-gray-400">
+              Mixed gaps identified: {mixedGaps}
+            </p>
+          )}
+
           <Link
-            href="/student"
+            href={`/student?studentId=${studentId}`}
             className="mt-4 inline-block rounded-lg bg-teal px-6 py-3 text-sm font-medium text-white transition-all duration-200 hover:scale-[1.02]"
           >
             {t("test.backToDashboard")}
@@ -146,14 +298,31 @@ export default function DiagnosticTest() {
     );
   }
 
+  if (error !== null && diagnostic === null) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-offwhite px-4 text-sm text-navy">
+        {error}
+      </div>
+    );
+  }
+
+  if (question === undefined) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-offwhite px-4 text-sm text-gray-500">
+        No diagnostic questions are ready yet. Upload student misses and generate Spanish questions first.
+      </div>
+    );
+  }
+
   const letters = ["A", "B", "C", "D"];
+  const correctChoiceIndex = getChoiceIndex(question.correctAnswer);
 
   return (
     <div className="flex min-h-screen flex-col bg-offwhite">
       {/* Top Bar */}
       <header className="flex items-center justify-between bg-white px-6 py-3 shadow-sm">
         <Link
-          href="/student"
+          href={`/student?studentId=${studentId}`}
           className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
         >
           <X className="h-5 w-5" />
@@ -173,22 +342,18 @@ export default function DiagnosticTest() {
             />
           </div>
           <span className="text-xs font-medium text-gray-400">{t("test.progress")}</span>
-          {/* Level badge */}
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gold text-xs font-bold text-navy">
-            13
+            {profile?.student.level ?? 1}
           </div>
         </div>
       </header>
 
-      {/* Main Content */}
       <main className="flex flex-1 flex-col items-center px-4 py-8">
         <div className="w-full max-w-2xl">
-          {/* Progress label */}
           <p className="mb-6 text-center text-xs font-semibold uppercase tracking-widest text-gray-400">
             {t("test.question")} {currentIndex + 1} {t("quest.of")} {totalQuestions}
           </p>
 
-          {/* Question */}
           <h2 className="mb-2 text-center text-2xl font-bold leading-snug text-navy">
             {questionText}
           </h2>
@@ -196,16 +361,14 @@ export default function DiagnosticTest() {
             {subtitleText}
           </p>
 
-          {/* Answer Cards - 2x2 grid */}
           <div className="relative mb-6 grid grid-cols-2 gap-3">
             <XPAnimation xp={50} show={showXP} />
 
             {choices?.map((choice, index) => {
               const isSelected = selectedAnswer === index;
-              const isCorrect =
-                feedback && index === question.correctAnswer;
+              const isCorrect = feedback !== null && index === correctChoiceIndex;
               const isWrong =
-                feedback && isSelected && index !== question.correctAnswer;
+                feedback !== null && isSelected && index !== correctChoiceIndex;
 
               return (
                 <button
@@ -250,14 +413,13 @@ export default function DiagnosticTest() {
             })}
           </div>
 
-          {/* Encouragement Toast */}
           {feedback?.correct && (
             <div className="mb-4 flex items-start gap-3 rounded-xl bg-gold/10 p-4">
               <Sparkles className="h-5 w-5 flex-shrink-0 text-gold" strokeWidth={2} />
               <div>
-                <p className="text-sm font-bold text-navy">{t(feedback.messageKey)}</p>
+                <p className="text-sm font-bold text-navy">{feedback.message}</p>
                 <p className="mt-0.5 text-xs text-gray-500">
-                  {t("test.learningFast")}
+                  {feedback.explanation ?? t("test.learningFast")}
                 </p>
               </div>
             </div>
@@ -265,11 +427,19 @@ export default function DiagnosticTest() {
 
           {feedback && !feedback.correct && (
             <div className="mb-4 rounded-xl bg-coral/5 p-4">
-              <p className="text-sm font-medium text-navy">{t(feedback.messageKey)}</p>
+              <p className="text-sm font-medium text-navy">{feedback.message}</p>
+              {feedback.explanation && (
+                <p className="mt-1 text-xs text-gray-500">{feedback.explanation}</p>
+              )}
             </div>
           )}
 
-          {/* Alternative text input + mic */}
+          {error && (
+            <div className="mb-4 rounded-xl border border-coral/20 bg-coral/5 p-4 text-sm text-navy">
+              {error}
+            </div>
+          )}
+
           <div className="mb-6 rounded-xl bg-white p-4 shadow-sm">
             <p className="mb-2 text-xs font-medium text-gray-400">
               {t("test.alternative")}
@@ -286,14 +456,13 @@ export default function DiagnosticTest() {
             </div>
           </div>
 
-          {/* Submit / Continue button */}
           {!feedback ? (
             <button
               onClick={handleSubmit}
-              disabled={selectedAnswer === null && !textAnswer && !transcript}
+              disabled={isSubmitting || (selectedAnswer === null && !textAnswer && !transcript)}
               className="w-full rounded-lg bg-navy py-3.5 text-sm font-semibold text-white transition-all duration-200 hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-40"
             >
-              {t("test.submitAnswer")}
+              {isSubmitting ? "Submitting..." : t("test.submitAnswer")}
             </button>
           ) : (
             <button
@@ -307,4 +476,25 @@ export default function DiagnosticTest() {
       </main>
     </div>
   );
+}
+
+function parseStudentId(value: string | null): number {
+  if (value === null) {
+    return 1;
+  }
+
+  const parsedValue = Number(value);
+
+  return Number.isInteger(parsedValue) && parsedValue > 0 ? parsedValue : 1;
+}
+
+function getChoiceIndex(correctAnswer: string): number | null {
+  const choiceIndexMap: Record<string, number> = {
+    a: 0,
+    b: 1,
+    c: 2,
+    d: 3,
+  };
+
+  return choiceIndexMap[correctAnswer.trim().toLowerCase()] ?? null;
 }

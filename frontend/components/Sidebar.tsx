@@ -11,8 +11,8 @@ import {
   Settings,
   HelpCircle,
 } from "lucide-react";
-import { getInitials, getInitialsBgColor } from "@/lib/mockData";
 import { useLanguage } from "@/components/LanguageProvider";
+import { getInitials, getInitialsBgColor } from "@/lib/ui";
 
 interface SidebarProps {
   variant: "teacher" | "student";

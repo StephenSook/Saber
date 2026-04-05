@@ -7,13 +7,15 @@ import { useLanguage } from "@/components/LanguageProvider";
 interface FileUploadModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onUpload: (data: string[][]) => void;
+  onUpload: (file: File) => Promise<void> | void;
+  isSubmitting?: boolean;
 }
 
 export default function FileUploadModal({
   isOpen,
   onClose,
   onUpload,
+  isSubmitting = false,
 }: FileUploadModalProps) {
   const { t } = useLanguage();
   const [isDragging, setIsDragging] = useState(false);
@@ -59,11 +61,16 @@ export default function FileUploadModal({
   );
 
   const handleSubmit = () => {
-    if (preview) {
-      onUpload(preview);
-      onClose();
-      setFile(null);
-      setPreview(null);
+    if (file !== null) {
+      void Promise.resolve(onUpload(file))
+        .then(() => {
+          onClose();
+          setFile(null);
+          setPreview(null);
+        })
+        .catch(() => {
+          // Parent state surfaces the upload error without closing the modal.
+        });
     }
   };
 
@@ -169,9 +176,10 @@ export default function FileUploadModal({
             {/* Submit */}
             <button
               onClick={handleSubmit}
+              disabled={isSubmitting}
               className="w-full rounded-lg bg-teal px-4 py-2.5 text-sm font-medium text-white transition-all duration-200 hover:scale-[1.02]"
             >
-              {t("upload.submit")}
+              {isSubmitting ? "Uploading..." : t("upload.submit")}
             </button>
           </>
         )}

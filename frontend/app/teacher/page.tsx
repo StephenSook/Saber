@@ -1,82 +1,184 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Upload, Search, SlidersHorizontal } from "lucide-react";
 import Sidebar from "@/components/Sidebar";
-import StudentDetailPanel from "@/components/StudentDetailPanel";
+import StudentDetailPanel, {
+  type StudentDetailPanelStudent,
+} from "@/components/StudentDetailPanel";
 import FileUploadModal from "@/components/FileUploadModal";
 import { useLanguage } from "@/components/LanguageProvider";
 import LanguageToggle from "@/components/ui/LanguageToggle";
 import {
-  mockStudents,
-  mockTeacher,
-  Student,
+  generateSpanishQuestions,
+  getClassDashboard,
+  getStudentDashboard,
+  mapColorCodeToClassification,
+  type DashboardResponseData,
+  uploadCsv,
+} from "@/lib/api";
+import {
+  formatRelativeTime,
   getClassificationColor,
   getInitials,
   getInitialsBgColor,
-} from "@/lib/mockData";
+} from "@/lib/ui";
 
-function getRelativeTime(index: number): string {
-  const times = ["Today", "2h ago", "Yesterday", "Today", "3h ago", "Today", "Yesterday", "5h ago", "Today", "Yesterday", "Today", "2d ago", "Today", "Yesterday", "Today"];
-  return times[index % times.length];
-}
-
-// Deterministic score based on student name + classification (no Math.random)
-function getAvgScore(student: Student): number {
-  const seed = student.name.split("").reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
-  if (student.classification === "ontrack") return 85 + (seed % 10);
-  if (student.classification === "language") return 65 + (seed % 15);
-  if (student.classification === "content") return 45 + (seed % 15);
-  return 55 + (seed % 10);
-}
-
-const studentScores = mockStudents.map((s) => ({
-  id: s.id,
-  score: getAvgScore(s),
-}));
+const DEFAULT_CLASS_ID = 1;
 
 export default function TeacherDashboard() {
   const { t } = useLanguage();
-  const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
+  const searchParams = useSearchParams();
+  const classId = parseClassId(searchParams.get("classId"));
+  const [dashboard, setDashboard] = useState<DashboardResponseData | null>(null);
+  const [selectedStudent, setSelectedStudent] =
+    useState<StudentDetailPanelStudent | null>(null);
+  const [selectedStudentId, setSelectedStudentId] = useState<number | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isDetailLoading, setIsDetailLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [uploadMessage, setUploadMessage] = useState<string | null>(null);
+
+  const loadDashboard = useCallback(async (): Promise<void> => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const nextDashboard = await getClassDashboard(classId);
+      setDashboard(nextDashboard);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Failed to load dashboard.");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [classId]);
+
+  useEffect(() => {
+    void loadDashboard();
+  }, [loadDashboard]);
+
+  useEffect(() => {
+    if (selectedStudentId === null) {
+      setSelectedStudent(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadStudent = async (): Promise<void> => {
+      setIsDetailLoading(true);
+
+      try {
+        const studentProfile = await getStudentDashboard(selectedStudentId);
+
+        if (cancelled) {
+          return;
+        }
+
+        setSelectedStudent({
+          id: studentProfile.student.id,
+          name: studentProfile.student.name,
+          classification:
+            studentProfile.skills[0]?.classification ??
+            "ontrack",
+          skills: studentProfile.skills.map((skill) => ({
+            skillTag: skill.skillTag,
+            classification: skill.classification,
+            explanation: skill.explanation,
+            diagnosticCount: skill.diagnosticCount,
+          })),
+        });
+      } catch (loadError) {
+        if (!cancelled) {
+          setError(
+            loadError instanceof Error
+              ? loadError.message
+              : "Failed to load the student details.",
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setIsDetailLoading(false);
+        }
+      }
+    };
+
+    void loadStudent();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedStudentId]);
 
   const stats = useMemo(() => {
-    const total = mockStudents.length;
-    const language = mockStudents.filter((s) => s.classification === "language").length;
-    const content = mockStudents.filter((s) => s.classification === "content").length;
-    const mixed = mockStudents.filter((s) => s.classification === "mixed").length;
-    const ontrack = mockStudents.filter((s) => s.classification === "ontrack").length;
-    const healthPct = Math.round(((ontrack + language) / total) * 100);
+    const total = dashboard?.classStats.totalStudents ?? 0;
+    const language = dashboard?.classStats.breakdownCounts.language ?? 0;
+    const content = dashboard?.classStats.breakdownCounts.content ?? 0;
+    const mixed = dashboard?.classStats.breakdownCounts.mixed ?? 0;
+    const ontrack = dashboard?.classStats.breakdownCounts.no_gaps ?? 0;
+
     return {
       total,
-      language,
-      languagePct: Math.round((language / total) * 100),
-      content,
-      contentPct: Math.round((content / total) * 100),
+      languagePct: total === 0 ? 0 : Math.round((language / total) * 100),
+      contentPct: total === 0 ? 0 : Math.round((content / total) * 100),
+      healthPct: total === 0 ? 0 : Math.round(((ontrack + language) / total) * 100),
       mixed,
-      healthPct,
     };
-  }, []);
+  }, [dashboard]);
 
   const filteredStudents = useMemo(() => {
-    if (!searchQuery) return mockStudents;
-    return mockStudents.filter((s) =>
-      s.name.toLowerCase().includes(searchQuery.toLowerCase())
+    const students = dashboard?.students ?? [];
+
+    if (!searchQuery) {
+      return students;
+    }
+
+    return students.filter((student) =>
+      student.name.toLowerCase().includes(searchQuery.toLowerCase()),
     );
-  }, [searchQuery]);
+  }, [dashboard, searchQuery]);
+
+  const handleUpload = useCallback(
+    async (file: File): Promise<void> => {
+      setIsUploading(true);
+      setError(null);
+      setUploadMessage(null);
+
+      try {
+        const uploadResult = await uploadCsv(classId, file);
+        const generationResult = await generateSpanishQuestions(uploadResult.uploadId);
+
+        setUploadMessage(
+          `Processed ${uploadResult.studentsProcessed} students, created ${uploadResult.missedItemsGenerated} missed items, and generated ${generationResult.generated} Spanish questions.`,
+        );
+        await loadDashboard();
+      } catch (uploadError) {
+        setError(
+          uploadError instanceof Error
+            ? uploadError.message
+            : "Failed to upload scores.",
+        );
+        throw uploadError;
+      } finally {
+        setIsUploading(false);
+      }
+    },
+    [classId, loadDashboard],
+  );
 
   return (
     <div className="flex min-h-screen">
       <Sidebar
         variant="teacher"
-        userName={mockTeacher.name}
-        schoolName={mockTeacher.school}
+        userName="Teacher Dashboard"
+        schoolName={dashboard?.classroom.name ?? "Saber"}
       />
 
-      {/* Main Content */}
       <main className="flex-1 overflow-y-auto bg-offwhite">
-        {/* Top Bar */}
         <header className="flex items-center justify-between border-b border-gray-100 bg-white px-8 py-4">
           <div>
             <div className="flex items-center gap-3 text-sm text-gray-400">
@@ -91,11 +193,10 @@ export default function TeacherDashboard() {
         </header>
 
         <div className="p-8">
-          {/* Page Title + Upload */}
           <div className="mb-6 flex items-start justify-between">
             <div>
               <h1 className="text-2xl font-bold text-navy">
-                {t("teacher.title")}
+                {dashboard?.classroom.name ?? t("teacher.title")}
               </h1>
               <p className="mt-1 text-sm text-gray-400">
                 {t("teacher.subtitle")} {stats.total} {t("teacher.activeStudents")}
@@ -110,9 +211,19 @@ export default function TeacherDashboard() {
             </button>
           </div>
 
-          {/* Stats Row */}
+          {error && (
+            <div className="mb-4 rounded-xl border border-coral/20 bg-coral/5 px-4 py-3 text-sm text-navy">
+              {error}
+            </div>
+          )}
+
+          {uploadMessage && (
+            <div className="mb-4 rounded-xl border border-teal/20 bg-teal/5 px-4 py-3 text-sm text-navy">
+              {uploadMessage}
+            </div>
+          )}
+
           <div className="mb-8 grid grid-cols-4 gap-4">
-            {/* Total Enrollment */}
             <div className="rounded-xl bg-white p-5 shadow-sm">
               <p className="text-xs font-medium uppercase tracking-wider text-gray-400">
                 {t("teacher.totalEnrollment")}
@@ -123,7 +234,6 @@ export default function TeacherDashboard() {
               </div>
             </div>
 
-            {/* Language Barrier */}
             <div className="rounded-xl bg-white p-5 shadow-sm">
               <p className="text-xs font-medium uppercase tracking-wider text-gray-400">
                 {t("teacher.languageBarrier")}
@@ -142,7 +252,6 @@ export default function TeacherDashboard() {
               </div>
             </div>
 
-            {/* Content Gaps */}
             <div className="rounded-xl bg-white p-5 shadow-sm">
               <p className="text-xs font-medium uppercase tracking-wider text-gray-400">
                 {t("teacher.contentGaps")}
@@ -161,7 +270,6 @@ export default function TeacherDashboard() {
               </div>
             </div>
 
-            {/* Class Health */}
             <div className="rounded-xl border-l-4 border-success bg-white p-5 shadow-sm">
               <p className="text-xs font-medium uppercase tracking-wider text-gray-400">
                 {t("teacher.classHealth")}
@@ -173,9 +281,7 @@ export default function TeacherDashboard() {
             </div>
           </div>
 
-          {/* Student Roster */}
           <div className="rounded-xl bg-white shadow-sm">
-            {/* Roster Header */}
             <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
               <h2 className="text-lg font-bold text-navy">{t("teacher.studentRoster")}</h2>
               <div className="flex items-center gap-3">
@@ -199,7 +305,6 @@ export default function TeacherDashboard() {
               </div>
             </div>
 
-            {/* Table Header */}
             <div className="grid grid-cols-[2fr_1fr_1fr_0.5fr] gap-4 border-b border-gray-50 px-6 py-3">
               <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">
                 {t("teacher.colName")}
@@ -215,23 +320,35 @@ export default function TeacherDashboard() {
               </span>
             </div>
 
-            {/* Student Rows */}
-            {filteredStudents.map((student, index) => {
-              const classInfo = getClassificationColor(student.classification);
+            {isLoading ? (
+              <div className="px-6 py-8 text-sm text-gray-400">Loading roster...</div>
+            ) : filteredStudents.length === 0 ? (
+              <div className="px-6 py-8 text-sm text-gray-400">
+                No students found for this class yet.
+              </div>
+            ) : (
+              filteredStudents.map((student) => {
+              const classification = mapColorCodeToClassification(student.color_code);
+              const classInfo = getClassificationColor(classification);
               const initials = getInitials(student.name);
               const avatarBg = getInitialsBgColor(student.name);
-              const score =
-                studentScores.find((s) => s.id === student.id)?.score ?? 75;
+              const totalGapCount =
+                student.gap_counts.language +
+                student.gap_counts.content +
+                student.gap_counts.mixed;
+              const score = Math.max(0, 100 - totalGapCount * 10);
 
               return (
                 <button
                   key={student.id}
-                  onClick={() => setSelectedStudent(student)}
+                  onClick={() => {
+                    setSelectedStudentId(student.id);
+                    setSelectedStudent(null);
+                  }}
                   className={`grid w-full grid-cols-[2fr_1fr_1fr_0.5fr] items-center gap-4 border-b border-gray-50 px-6 py-3.5 text-left transition-colors hover:bg-gray-50 ${
-                    selectedStudent?.id === student.id ? "bg-teal/5" : ""
+                    selectedStudentId === student.id ? "bg-teal/5" : ""
                   }`}
                 >
-                  {/* Name */}
                   <div className="flex items-center gap-3">
                     <div
                       className={`flex h-9 w-9 items-center justify-center rounded-full text-xs font-bold text-white ${avatarBg}`}
@@ -248,7 +365,6 @@ export default function TeacherDashboard() {
                     </div>
                   </div>
 
-                  {/* Status Badge */}
                   <div>
                     <span
                       className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${classInfo.bg} ${classInfo.text}`}
@@ -258,36 +374,54 @@ export default function TeacherDashboard() {
                     </span>
                   </div>
 
-                  {/* Last Active */}
                   <span className="text-sm text-gray-500">
-                    {getRelativeTime(index)}
+                    {formatRelativeTime(student.lastActive)}
                   </span>
 
-                  {/* Score */}
                   <span className="text-right text-sm font-semibold text-navy">
                     {score}%
                   </span>
                 </button>
               );
-            })}
+            }))}
           </div>
         </div>
       </main>
 
-      {/* Student Detail Panel */}
       {selectedStudent && (
         <StudentDetailPanel
           student={selectedStudent}
-          onClose={() => setSelectedStudent(null)}
+          onClose={() => {
+            setSelectedStudent(null);
+            setSelectedStudentId(null);
+          }}
         />
       )}
 
-      {/* Upload Modal */}
+      {isDetailLoading && selectedStudentId !== null && (
+        <aside className="sticky top-0 flex h-screen w-80 items-center justify-center border-l border-gray-100 bg-white text-sm text-gray-400">
+          Loading student details...
+        </aside>
+      )}
+
       <FileUploadModal
         isOpen={uploadOpen}
         onClose={() => setUploadOpen(false)}
-        onUpload={() => {}}
+        onUpload={handleUpload}
+        isSubmitting={isUploading}
       />
     </div>
   );
+}
+
+function parseClassId(value: string | null): number {
+  if (value === null) {
+    return DEFAULT_CLASS_ID;
+  }
+
+  const parsedValue = Number(value);
+
+  return Number.isInteger(parsedValue) && parsedValue > 0
+    ? parsedValue
+    : DEFAULT_CLASS_ID;
 }

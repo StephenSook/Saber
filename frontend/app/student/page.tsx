@@ -1,91 +1,126 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import { Star } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
 import QuestCard from "@/components/QuestCard";
 import Leaderboard from "@/components/Leaderboard";
 import MicButton from "@/components/MicButton";
 import { useLanguage } from "@/components/LanguageProvider";
-import { mockStudents } from "@/lib/mockData";
-
-// Use Maria Gonzalez as the demo student
-const student = mockStudents[0];
-const xpProgress = Math.round((student.xp / student.xpToNextLevel) * 100);
+import {
+  getStudentDashboard,
+  mapQuestStatus,
+  type StudentProfileResponseData,
+} from "@/lib/api";
 
 const days = ["M", "T", "W", "T", "F", "S", "S"];
-
-// Extra demo quests for the quest board display
-const demoQuests = [
-  {
-    id: "demo1",
-    title: "Math Magic",
-    skillTag: "Multiplication",
-    totalItems: 8,
-    completedItems: 3,
-    xpReward: 100,
-    status: "in_progress" as const,
-  },
-  {
-    id: "demo2",
-    title: "Language Lab",
-    skillTag: "Reading Comprehension",
-    totalItems: 12,
-    completedItems: 7,
-    xpReward: 200,
-    status: "in_progress" as const,
-  },
-  {
-    id: "demo3",
-    title: "Science Safari",
-    skillTag: "Photosynthesis",
-    totalItems: 5,
-    completedItems: 0,
-    xpReward: 300,
-    status: "not_started" as const,
-  },
-];
+const DEFAULT_STUDENT_ID = 1;
 
 export default function StudentDashboard() {
   const { t } = useLanguage();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const studentId = parseStudentId(searchParams.get("studentId"));
+  const [profile, setProfile] = useState<StudentProfileResponseData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadProfile = async (): Promise<void> => {
+      try {
+        const nextProfile = await getStudentDashboard(studentId);
+
+        if (!cancelled) {
+          setProfile(nextProfile);
+          setError(null);
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setError(
+            loadError instanceof Error
+              ? loadError.message
+              : "Failed to load the student dashboard.",
+          );
+        }
+      }
+    };
+
+    void loadProfile();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [studentId]);
+
+  const xpProgress = useMemo(() => {
+    if (profile === null || profile.student.nextLevelXp === 0) {
+      return 0;
+    }
+
+    return Math.round((profile.student.xp / profile.student.nextLevelXp) * 100);
+  }, [profile]);
+
+  const visibleQuests =
+    profile?.quests.map((quest) => ({
+      id: quest.id,
+      title: quest.skillTag,
+      skillTag: quest.skillTag,
+      totalItems: quest.totalItems,
+      completedItems: quest.completedItems,
+      xpReward: quest.xpReward,
+      status: mapQuestStatus(quest.status),
+    })) ?? [];
+
+  if (profile === null && error === null) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-offwhite text-sm text-gray-500">
+        Loading student dashboard...
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen">
       <Sidebar
         variant="student"
-        userName={student.name}
-        schoolName="Greenwood Academy"
+        userName={profile?.student.name ?? "Student"}
+        schoolName={profile?.student.className ?? "Saber"}
       />
 
-      {/* Main Content */}
       <main className="flex-1 overflow-y-auto bg-offwhite">
         <div className="p-8">
-          {/* Welcome Header + Streak */}
+          {error && (
+            <div className="mb-4 rounded-xl border border-coral/20 bg-coral/5 px-4 py-3 text-sm text-navy">
+              {error}
+            </div>
+          )}
+
           <div className="mb-8 flex items-start justify-between">
-            {/* Welcome */}
             <div>
               <div className="mb-1 flex items-center gap-3">
                 <span className="rounded-full bg-teal/10 px-3 py-1 text-xs font-bold text-teal">
-                  {t("student.level")} {student.level}
+                  {t("student.level")} {profile?.student.level ?? 1}
                 </span>
                 <span className="rounded-full bg-gold/20 px-3 py-1 text-xs font-bold text-navy">
                   {t("student.goldRank")}
                 </span>
               </div>
               <h1 className="text-3xl font-bold text-navy">
-                Hola, {student.name.split(" ")[0]}!
+                Hola, {profile?.student.name.split(" ")[0] ?? "Student"}!
               </h1>
               <p className="mt-1 text-sm text-gray-400">
                 {t("student.greeting")}
               </p>
 
-              {/* XP Progress Bar */}
               <div className="mt-4 w-full max-w-md">
                 <div className="mb-1 flex items-center justify-between">
                   <span className="text-xs font-medium text-gray-500">
-                    {t("student.progressTo")} {student.level + 1}
+                    {t("student.progressTo")} {(profile?.student.level ?? 1) + 1}
                   </span>
                   <span className="text-xs font-medium text-gray-400">
-                    {student.xp} / {student.xpToNextLevel} XP
+                    {profile?.student.xp ?? 0} / {profile?.student.nextLevelXp ?? 100} XP
                   </span>
                 </div>
                 <div className="h-3 w-full overflow-hidden rounded-full bg-gray-100">
@@ -97,12 +132,11 @@ export default function StudentDashboard() {
               </div>
             </div>
 
-            {/* Streak Card */}
             <div className="rounded-xl bg-white p-5 shadow-sm">
               <div className="mb-2 flex items-center gap-2">
                 <Star className="h-5 w-5 text-gold" fill="#F2CC8F" strokeWidth={1.5} />
                 <span className="text-lg font-bold text-navy">
-                  {student.streakDays} {t("student.streak")}
+                  {profile?.student.streakDays ?? 0} {t("student.streak")}
                 </span>
               </div>
               <p className="mb-3 text-xs text-gray-400">
@@ -113,7 +147,7 @@ export default function StudentDashboard() {
                   <div
                     key={i}
                     className={`flex h-7 w-7 items-center justify-center rounded-md text-xs font-medium ${
-                      i < student.streakDays
+                      i < (profile?.student.streakDays ?? 0)
                         ? "bg-teal text-white"
                         : "bg-gray-100 text-gray-400"
                     }`}
@@ -125,9 +159,7 @@ export default function StudentDashboard() {
             </div>
           </div>
 
-          {/* Quest Board + Leaderboard */}
           <div className="flex gap-8">
-            {/* Quest Board */}
             <div className="flex-1">
               <div className="mb-4 flex items-center justify-between">
                 <div>
@@ -141,23 +173,52 @@ export default function StudentDashboard() {
                 </button>
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
-                {demoQuests.map((quest) => (
-                  <QuestCard key={quest.id} quest={quest} />
-                ))}
-              </div>
+              {visibleQuests.length === 0 ? (
+                <div className="rounded-xl bg-white p-6 text-sm text-gray-400 shadow-sm">
+                  No quests are available for this student yet.
+                </div>
+              ) : (
+                <div className="grid grid-cols-3 gap-4">
+                  {visibleQuests.map((quest) => (
+                    <QuestCard
+                      key={quest.id}
+                      quest={quest}
+                      studentId={profile?.student.id ?? studentId}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
 
-            {/* Leaderboard Sidebar */}
             <div className="w-72 flex-shrink-0">
-              <Leaderboard currentStudentName={student.name} />
+              <Leaderboard
+                entries={profile?.leaderboard ?? []}
+                currentStudentName={profile?.student.name}
+              />
             </div>
           </div>
         </div>
       </main>
 
-      {/* Floating Mic Button */}
-      <MicButton isListening={false} onClick={() => {}} floating />
+      <MicButton
+        isListening={false}
+        onClick={() => {
+          router.push(`/test?studentId=${profile?.student.id ?? studentId}`);
+        }}
+        floating
+      />
     </div>
   );
+}
+
+function parseStudentId(value: string | null): number {
+  if (value === null) {
+    return DEFAULT_STUDENT_ID;
+  }
+
+  const parsedValue = Number(value);
+
+  return Number.isInteger(parsedValue) && parsedValue > 0
+    ? parsedValue
+    : DEFAULT_STUDENT_ID;
 }

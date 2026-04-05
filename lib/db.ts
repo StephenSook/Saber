@@ -1,4 +1,5 @@
 import BetterSqlite3 from "better-sqlite3";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 
 import { AppError } from "./errors";
@@ -193,6 +194,37 @@ export interface LeaderboardEntry {
   last_active: string | null;
 }
 
+export interface StudentSkillSummary {
+  skill_tag: string;
+  diagnostic_count: number;
+  language_count: number;
+  content_count: number;
+  mixed_count: number;
+  latest_explanation: string | null;
+}
+
+export interface StudentQuestProgress {
+  id: number;
+  student_id: number;
+  skill_tag: string;
+  difficulty: QuestDifficulty;
+  status: QuestStatus;
+  xp_reward: number;
+  total_items: number;
+  completed_items: number;
+}
+
+export interface StudentDiagnosticQuestion {
+  upload_id: number;
+  question_id: string;
+  student_answer_en: string | null;
+  latest_student_answer_es: string | null;
+  latest_classification: DiagnosticClassification | null;
+  latest_explanation: string | null;
+  answered_at: string | null;
+  question: Question;
+}
+
 export interface XPResult {
   xp_log_id: number;
   student_id: number;
@@ -299,6 +331,45 @@ interface ClassSubjectGapCountRow {
   gap_count: number;
 }
 
+interface StudentSkillSummaryRow {
+  skill_tag: string;
+  diagnostic_count: number;
+  language_count: number;
+  content_count: number;
+  mixed_count: number;
+  latest_explanation: string | null;
+}
+
+interface StudentQuestProgressRow {
+  id: number;
+  student_id: number;
+  skill_tag: string;
+  difficulty: string;
+  status: string;
+  xp_reward: number;
+  total_items: number;
+  completed_items: number;
+}
+
+interface StudentDiagnosticQuestionRow {
+  upload_id: number;
+  student_answer_en: string | null;
+  latest_student_answer_es: string | null;
+  latest_classification: string | null;
+  latest_explanation: string | null;
+  answered_at: string | null;
+  question_id: string;
+  question_subject: string;
+  question_grade: number;
+  question_skill_tag: string;
+  question_type: string;
+  question_en: string;
+  question_es: string;
+  question_choices_en: string | null;
+  question_choices_es: string | null;
+  question_correct_answer: string;
+}
+
 interface RunResultLike {
   lastInsertRowid: number | bigint;
 }
@@ -306,6 +377,7 @@ interface RunResultLike {
 type BetterSqliteDatabase = InstanceType<typeof BetterSqlite3>;
 
 const DEFAULT_DATABASE_PATH = path.join(process.cwd(), "data", "saber.db");
+const DEFAULT_SCHEMA_PATH = path.join(process.cwd(), "data", "schema.sql");
 
 export const db: BetterSqliteDatabase = createDatabase();
 
@@ -500,6 +572,106 @@ const getLeaderboardStatement = db.prepare(`
   ORDER BY weekly_xp DESC, s.streak_days DESC, s.name ASC, s.id ASC
 `);
 
+const getStudentSkillSummariesStatement = db.prepare(`
+  SELECT
+    q.skill_tag AS skill_tag,
+    COUNT(d.id) AS diagnostic_count,
+    COALESCE(SUM(CASE WHEN d.classification = 'LANGUAGE' THEN 1 ELSE 0 END), 0) AS language_count,
+    COALESCE(SUM(CASE WHEN d.classification = 'CONTENT' THEN 1 ELSE 0 END), 0) AS content_count,
+    COALESCE(SUM(CASE WHEN d.classification = 'MIXED' THEN 1 ELSE 0 END), 0) AS mixed_count,
+    (
+      SELECT d2.explanation
+      FROM diagnostics d2
+      INNER JOIN questions q2 ON q2.id = d2.question_id
+      WHERE d2.student_id = ? AND q2.skill_tag = q.skill_tag
+      ORDER BY datetime(d2.created_at) DESC, d2.id DESC
+      LIMIT 1
+    ) AS latest_explanation
+  FROM diagnostics d
+  INNER JOIN questions q ON q.id = d.question_id
+  WHERE d.student_id = ?
+  GROUP BY q.skill_tag
+  ORDER BY diagnostic_count DESC, q.skill_tag ASC
+`);
+
+const getStudentQuestsStatement = db.prepare(`
+  SELECT
+    q.id AS id,
+    q.student_id AS student_id,
+    q.skill_tag AS skill_tag,
+    q.difficulty AS difficulty,
+    q.status AS status,
+    q.xp_reward AS xp_reward,
+    COUNT(qi.id) AS total_items,
+    COALESCE(SUM(CASE WHEN qi.completed = 1 THEN 1 ELSE 0 END), 0) AS completed_items
+  FROM quests q
+  LEFT JOIN quest_items qi ON qi.quest_id = q.id
+  WHERE q.student_id = ?
+  GROUP BY q.id, q.student_id, q.skill_tag, q.difficulty, q.status, q.xp_reward
+  ORDER BY
+    CASE q.status
+      WHEN 'active' THEN 0
+      WHEN 'locked' THEN 1
+      ELSE 2
+    END,
+    q.id ASC
+`);
+
+const getLatestStudentDiagnosticQuestionsStatement = db.prepare(`
+  SELECT
+    mi.upload_id AS upload_id,
+    mi.student_answer_en AS student_answer_en,
+    (
+      SELECT d2.student_answer_es
+      FROM diagnostics d2
+      WHERE d2.student_id = mi.student_id AND d2.question_id = mi.question_id
+      ORDER BY datetime(d2.created_at) DESC, d2.id DESC
+      LIMIT 1
+    ) AS latest_student_answer_es,
+    (
+      SELECT d2.classification
+      FROM diagnostics d2
+      WHERE d2.student_id = mi.student_id AND d2.question_id = mi.question_id
+      ORDER BY datetime(d2.created_at) DESC, d2.id DESC
+      LIMIT 1
+    ) AS latest_classification,
+    (
+      SELECT d2.explanation
+      FROM diagnostics d2
+      WHERE d2.student_id = mi.student_id AND d2.question_id = mi.question_id
+      ORDER BY datetime(d2.created_at) DESC, d2.id DESC
+      LIMIT 1
+    ) AS latest_explanation,
+    (
+      SELECT d2.created_at
+      FROM diagnostics d2
+      WHERE d2.student_id = mi.student_id AND d2.question_id = mi.question_id
+      ORDER BY datetime(d2.created_at) DESC, d2.id DESC
+      LIMIT 1
+    ) AS answered_at,
+    q.id AS question_id,
+    q.subject AS question_subject,
+    q.grade AS question_grade,
+    q.skill_tag AS question_skill_tag,
+    q.question_type AS question_type,
+    q.question_en AS question_en,
+    q.question_es AS question_es,
+    q.choices_en AS question_choices_en,
+    q.choices_es AS question_choices_es,
+    q.correct_answer AS question_correct_answer
+  FROM missed_items mi
+  INNER JOIN questions q ON q.id = mi.question_id
+  WHERE mi.student_id = ?
+    AND mi.upload_id = (
+      SELECT mi2.upload_id
+      FROM missed_items mi2
+      WHERE mi2.student_id = ?
+      ORDER BY mi2.upload_id DESC, mi2.id DESC
+      LIMIT 1
+    )
+  ORDER BY mi.id ASC
+`);
+
 const insertStudentStatement = db.prepare(`
   INSERT INTO students (class_id, name, xp, level, streak_days, last_active)
   VALUES (?, ?, ?, ?, ?, ?)
@@ -561,8 +733,33 @@ function createDatabase(): BetterSqliteDatabase {
   const database = new BetterSqlite3(databasePath);
 
   database.pragma("foreign_keys = ON");
+  ensureDatabaseSchema(database);
 
   return database;
+}
+
+function ensureDatabaseSchema(database: BetterSqliteDatabase): void {
+  let schemaSql: string;
+
+  try {
+    schemaSql = readFileSync(DEFAULT_SCHEMA_PATH, "utf8");
+  } catch (error: unknown) {
+    throw new AppError("Failed to load the database schema.", {
+      statusCode: 500,
+      code: "DB_SCHEMA_READ_FAILED",
+      cause: error,
+    });
+  }
+
+  try {
+    database.exec(schemaSql);
+  } catch (error: unknown) {
+    throw new AppError("Failed to initialize the database schema.", {
+      statusCode: 500,
+      code: "DB_SCHEMA_INIT_FAILED",
+      cause: error,
+    });
+  }
 }
 
 function resolveDatabasePath(): string {
@@ -739,7 +936,11 @@ function ensureDiagnosticClassification(
 }
 
 function parseChoiceArray(
-  fieldName: "choices_en" | "choices_es",
+  fieldName:
+    | "choices_en"
+    | "choices_es"
+    | "question_choices_en"
+    | "question_choices_es",
   value: string | null,
 ): string[] | null {
   if (value === null) {
@@ -1076,6 +1277,146 @@ function parseLeaderboardRow(row: unknown): LeaderboardRow {
     level: getNumberField(record, "level", "leaderboard_entry"),
     streak_days: getNumberField(record, "streak_days", "leaderboard_entry"),
     last_active: getNullableStringField(record, "last_active", "leaderboard_entry"),
+  };
+}
+
+function parseStudentSkillSummaryRow(row: unknown): StudentSkillSummary {
+  const record = getRecord(row, "student_skill_summary");
+  const summaryRow: StudentSkillSummaryRow = {
+    skill_tag: getStringField(record, "skill_tag", "student_skill_summary"),
+    diagnostic_count: getNumberField(record, "diagnostic_count", "student_skill_summary"),
+    language_count: getNumberField(record, "language_count", "student_skill_summary"),
+    content_count: getNumberField(record, "content_count", "student_skill_summary"),
+    mixed_count: getNumberField(record, "mixed_count", "student_skill_summary"),
+    latest_explanation: getNullableStringField(
+      record,
+      "latest_explanation",
+      "student_skill_summary",
+    ),
+  };
+
+  return {
+    skill_tag: summaryRow.skill_tag,
+    diagnostic_count: summaryRow.diagnostic_count,
+    language_count: summaryRow.language_count,
+    content_count: summaryRow.content_count,
+    mixed_count: summaryRow.mixed_count,
+    latest_explanation: summaryRow.latest_explanation,
+  };
+}
+
+function parseStudentQuestProgressRow(row: unknown): StudentQuestProgress {
+  const record = getRecord(row, "student_quest_progress");
+  const questRow: StudentQuestProgressRow = {
+    id: getNumberField(record, "id", "student_quest_progress"),
+    student_id: getNumberField(record, "student_id", "student_quest_progress"),
+    skill_tag: getStringField(record, "skill_tag", "student_quest_progress"),
+    difficulty: getStringField(record, "difficulty", "student_quest_progress"),
+    status: getStringField(record, "status", "student_quest_progress"),
+    xp_reward: getNumberField(record, "xp_reward", "student_quest_progress"),
+    total_items: getNumberField(record, "total_items", "student_quest_progress"),
+    completed_items: getNumberField(record, "completed_items", "student_quest_progress"),
+  };
+
+  if (!Object.values(QUEST_DIFFICULTIES).includes(questRow.difficulty as QuestDifficulty)) {
+    throw new AppError(`Unsupported quest difficulty "${questRow.difficulty}".`, {
+      statusCode: 500,
+      code: "DB_INVALID_ENUM",
+    });
+  }
+
+  if (!Object.values(QUEST_STATUSES).includes(questRow.status as QuestStatus)) {
+    throw new AppError(`Unsupported quest status "${questRow.status}".`, {
+      statusCode: 500,
+      code: "DB_INVALID_ENUM",
+    });
+  }
+
+  return {
+    id: questRow.id,
+    student_id: questRow.student_id,
+    skill_tag: questRow.skill_tag,
+    difficulty: questRow.difficulty as QuestDifficulty,
+    status: questRow.status as QuestStatus,
+    xp_reward: questRow.xp_reward,
+    total_items: questRow.total_items,
+    completed_items: questRow.completed_items,
+  };
+}
+
+function parseStudentDiagnosticQuestionRow(row: unknown): StudentDiagnosticQuestion {
+  const record = getRecord(row, "student_diagnostic_question");
+  const questionRow: StudentDiagnosticQuestionRow = {
+    upload_id: getNumberField(record, "upload_id", "student_diagnostic_question"),
+    student_answer_en: getNullableStringField(
+      record,
+      "student_answer_en",
+      "student_diagnostic_question",
+    ),
+    latest_student_answer_es: getNullableStringField(
+      record,
+      "latest_student_answer_es",
+      "student_diagnostic_question",
+    ),
+    latest_classification: getNullableStringField(
+      record,
+      "latest_classification",
+      "student_diagnostic_question",
+    ),
+    latest_explanation: getNullableStringField(
+      record,
+      "latest_explanation",
+      "student_diagnostic_question",
+    ),
+    answered_at: getNullableStringField(record, "answered_at", "student_diagnostic_question"),
+    question_id: getStringField(record, "question_id", "student_diagnostic_question"),
+    question_subject: getStringField(record, "question_subject", "student_diagnostic_question"),
+    question_grade: getNumberField(record, "question_grade", "student_diagnostic_question"),
+    question_skill_tag: getStringField(
+      record,
+      "question_skill_tag",
+      "student_diagnostic_question",
+    ),
+    question_type: getStringField(record, "question_type", "student_diagnostic_question"),
+    question_en: getStringField(record, "question_en", "student_diagnostic_question"),
+    question_es: getStringField(record, "question_es", "student_diagnostic_question"),
+    question_choices_en: getNullableStringField(
+      record,
+      "question_choices_en",
+      "student_diagnostic_question",
+    ),
+    question_choices_es: getNullableStringField(
+      record,
+      "question_choices_es",
+      "student_diagnostic_question",
+    ),
+    question_correct_answer: getStringField(
+      record,
+      "question_correct_answer",
+      "student_diagnostic_question",
+    ),
+  };
+
+  return {
+    upload_id: questionRow.upload_id,
+    question_id: questionRow.question_id,
+    student_answer_en: questionRow.student_answer_en,
+    latest_student_answer_es: questionRow.latest_student_answer_es,
+    latest_classification: ensureDiagnosticClassification(questionRow.latest_classification),
+    latest_explanation: questionRow.latest_explanation,
+    answered_at: questionRow.answered_at,
+    question: {
+      id: questionRow.question_id,
+      subject: ensureQuestionSubject(questionRow.question_subject),
+      grade: ensureQuestionGrade(questionRow.question_grade),
+      skill_tag: questionRow.question_skill_tag,
+      question_type: ensureQuestionType(questionRow.question_type),
+      question_en: questionRow.question_en,
+      question_es: questionRow.question_es,
+      choices_en: parseChoiceArray("question_choices_en", questionRow.question_choices_en),
+      choices_es: parseChoiceArray("question_choices_es", questionRow.question_choices_es),
+      correct_answer: questionRow.question_correct_answer,
+    },
   };
 }
 
@@ -1516,11 +1857,19 @@ export function saveDiagnosticResult(data: DiagnosticInsert): DiagnosticRecord {
     }
 
     const parsedDiagnostic = parseDiagnosticRow(existingDiagnostic);
+    const classification =
+      data.classification === null ? parsedDiagnostic.classification : data.classification;
+    const explanation =
+      safeExplanation === null ? parsedDiagnostic.explanation : safeExplanation;
+    const studentAnswer =
+      safeStudentAnswer === null
+        ? parsedDiagnostic.student_answer_es
+        : safeStudentAnswer;
 
     updateDiagnosticStatement.run(
-      safeStudentAnswer,
-      data.classification,
-      safeExplanation,
+      studentAnswer,
+      classification,
+      explanation,
       parsedDiagnostic.id,
     );
 
@@ -1562,6 +1911,68 @@ export function getLeaderboard(classId: number): LeaderboardEntry[] {
       error,
       "Failed to load the class leaderboard.",
       "DB_GET_LEADERBOARD_FAILED",
+    );
+  }
+}
+
+/**
+ * Returns diagnostic skill summaries for a student grouped by skill tag.
+ */
+export function getStudentSkillSummaries(studentId: number): StudentSkillSummary[] {
+  try {
+    const safeStudentId = ensurePositiveInteger("studentId", studentId);
+    const rows = getStudentSkillSummariesStatement.all(
+      safeStudentId,
+      safeStudentId,
+    ) as unknown[];
+
+    return rows.map((row: unknown) => parseStudentSkillSummaryRow(row));
+  } catch (error: unknown) {
+    throw wrapDatabaseError(
+      error,
+      "Failed to load the student's skill summaries.",
+      "DB_GET_STUDENT_SKILL_SUMMARIES_FAILED",
+    );
+  }
+}
+
+/**
+ * Returns the student's quest progress, including aggregate quest-item counts.
+ */
+export function getStudentQuests(studentId: number): StudentQuestProgress[] {
+  try {
+    const safeStudentId = ensurePositiveInteger("studentId", studentId);
+    const rows = getStudentQuestsStatement.all(safeStudentId) as unknown[];
+
+    return rows.map((row: unknown) => parseStudentQuestProgressRow(row));
+  } catch (error: unknown) {
+    throw wrapDatabaseError(
+      error,
+      "Failed to load the student's quests.",
+      "DB_GET_STUDENT_QUESTS_FAILED",
+    );
+  }
+}
+
+/**
+ * Returns diagnostic questions for the student's latest upload, along with any latest answer/classification.
+ */
+export function getLatestStudentDiagnosticQuestions(
+  studentId: number,
+): StudentDiagnosticQuestion[] {
+  try {
+    const safeStudentId = ensurePositiveInteger("studentId", studentId);
+    const rows = getLatestStudentDiagnosticQuestionsStatement.all(
+      safeStudentId,
+      safeStudentId,
+    ) as unknown[];
+
+    return rows.map((row: unknown) => parseStudentDiagnosticQuestionRow(row));
+  } catch (error: unknown) {
+    throw wrapDatabaseError(
+      error,
+      "Failed to load the student's diagnostic questions.",
+      "DB_GET_STUDENT_DIAGNOSTIC_QUESTIONS_FAILED",
     );
   }
 }

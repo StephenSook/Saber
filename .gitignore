@@ -76,6 +76,7 @@ web_modules/
 
 # Next.js build output
 .next
+data/saber.db
 out
 
 # Nuxt.js build / generate output

@@ -18,12 +18,24 @@ import {
 } from "../../../lib/db";
 import { AppError, handleApiError, handleApiOptions, jsonSuccess } from "../../../lib/errors";
 
-const REQUIRED_HEADERS = [
+const SCORE_REQUIRED_HEADERS = [
   "student_name",
   "math_score",
   "science_score",
   "social_studies_score",
   "language_arts_score",
+] as const;
+
+const DETAILED_REQUIRED_HEADERS = [
+  "student_name",
+  "question_id",
+  "student_answer",
+] as const;
+
+const DETAILED_ALTERNATE_HEADERS = [
+  "student_name",
+  "question_id",
+  "student_answer_en",
 ] as const;
 
 const QUESTION_BANK_PATH = path.join(process.cwd(), "data", "question_bank.json");
@@ -34,7 +46,7 @@ const CSV_SUBJECT_COLUMN_MAP = {
   social_studies_score: QUESTION_SUBJECTS.HISTORY,
   language_arts_score: QUESTION_SUBJECTS.ELA,
 } as const satisfies Record<
-  Exclude<(typeof REQUIRED_HEADERS)[number], "student_name">,
+  Exclude<(typeof SCORE_REQUIRED_HEADERS)[number], "student_name">,
   QuestionSubject
 >;
 
@@ -64,7 +76,7 @@ const csvScoreSchema = z.preprocess(
   z.number().finite().min(0).max(100),
 );
 
-const csvRowSchema = z.object({
+const scoreCsvRowSchema = z.object({
   student_name: z.string().trim().min(1),
   math_score: csvScoreSchema,
   science_score: csvScoreSchema,
@@ -72,7 +84,15 @@ const csvRowSchema = z.object({
   language_arts_score: csvScoreSchema,
 });
 
-const csvRowsSchema = z.array(csvRowSchema).min(1);
+const scoreCsvRowsSchema = z.array(scoreCsvRowSchema).min(1);
+
+const detailedCsvRowSchema = z.object({
+  student_name: z.string().trim().min(1),
+  question_id: z.string().trim().min(1),
+  student_answer: z.string().trim().min(1),
+});
+
+const detailedCsvRowsSchema = z.array(detailedCsvRowSchema).min(1);
 
 const questionBankEntrySchema = z.object({
   id: z.string().trim().min(1),
@@ -87,8 +107,18 @@ const questionBankEntrySchema = z.object({
 
 const questionBankSchema = z.array(questionBankEntrySchema);
 
-type CsvRow = z.infer<typeof csvRowSchema>;
+type ScoreCsvRow = z.infer<typeof scoreCsvRowSchema>;
+type DetailedCsvRow = z.infer<typeof detailedCsvRowSchema>;
 type QuestionBankEntry = z.infer<typeof questionBankEntrySchema>;
+type ParsedCsvRows =
+  | {
+      format: "subject_scores";
+      rows: ScoreCsvRow[];
+    }
+  | {
+      format: "missed_questions";
+      rows: DetailedCsvRow[];
+    };
 
 let questionBankPromise: Promise<QuestionBankEntry[]> | null = null;
 
@@ -107,13 +137,13 @@ export async function POST(request: Request): Promise<Response> {
       formData.get("file") ?? formData.get("csv") ?? formData.get("csvFile"),
     );
     const csvText = await file.text();
-    const rows = parseCsvRows(csvText);
+    const parsedCsv = parseCsvRows(csvText);
     const targetClass = resolveClass(classId);
     const questionBank = await getQuestionBank();
 
     const result = persistUpload({
       filename: file.name || "upload.csv",
-      rows,
+      parsedCsv,
       targetClass,
       questionBank,
     });
@@ -160,10 +190,11 @@ function parseCsvFile(fileValue: FormDataEntryValue | null): File {
   return fileValue;
 }
 
-function parseCsvRows(csvText: string): CsvRow[] {
+function parseCsvRows(csvText: string): ParsedCsvRows {
   const parseResult = Papa.parse<Record<string, unknown>>(csvText, {
     header: true,
     skipEmptyLines: "greedy",
+    comments: "#",
   });
 
   if (parseResult.errors.length > 0) {
@@ -175,37 +206,65 @@ function parseCsvRows(csvText: string): CsvRow[] {
 
   const fields = parseResult.meta.fields ?? [];
 
-  if (!hasExactHeaders(fields)) {
-    throw new AppError(
-      "The CSV file must include exactly these columns: student_name, math_score, science_score, social_studies_score, language_arts_score.",
-      {
+  if (matchesHeaders(fields, SCORE_REQUIRED_HEADERS)) {
+    const validationResult = scoreCsvRowsSchema.safeParse(parseResult.data);
+
+    if (!validationResult.success) {
+      throw new AppError("The CSV rows are invalid.", {
         statusCode: 400,
-        code: "UPLOAD_MISSING_COLUMNS",
-      },
-    );
+        code: "UPLOAD_INVALID_ROWS",
+        cause: validationResult.error,
+      });
+    }
+
+    return {
+      format: "subject_scores",
+      rows: validationResult.data,
+    };
   }
 
-  const validationResult = csvRowsSchema.safeParse(parseResult.data);
+  if (
+    matchesHeaders(fields, DETAILED_REQUIRED_HEADERS) ||
+    matchesHeaders(fields, DETAILED_ALTERNATE_HEADERS)
+  ) {
+    const normalizedRows = parseResult.data.map((row: Record<string, unknown>) => ({
+      student_name: row.student_name,
+      question_id: row.question_id,
+      student_answer: row.student_answer ?? row.student_answer_en,
+    }));
+    const validationResult = detailedCsvRowsSchema.safeParse(normalizedRows);
 
-  if (!validationResult.success) {
-    throw new AppError("The CSV rows are invalid.", {
+    if (!validationResult.success) {
+      throw new AppError("The CSV rows are invalid.", {
+        statusCode: 400,
+        code: "UPLOAD_INVALID_ROWS",
+        cause: validationResult.error,
+      });
+    }
+
+    return {
+      format: "missed_questions",
+      rows: validationResult.data,
+    };
+  }
+
+  throw new AppError(
+    "The CSV file must match one of these formats: subject scores (student_name, math_score, science_score, social_studies_score, language_arts_score) or missed questions (student_name, question_id, student_answer).",
+    {
       statusCode: 400,
-      code: "UPLOAD_INVALID_ROWS",
-      cause: validationResult.error,
-    });
-  }
-
-  return validationResult.data;
+      code: "UPLOAD_MISSING_COLUMNS",
+    },
+  );
 }
 
-function hasExactHeaders(fields: string[]): boolean {
-  if (fields.length !== REQUIRED_HEADERS.length) {
+function matchesHeaders(fields: string[], requiredHeaders: readonly string[]): boolean {
+  if (fields.length !== requiredHeaders.length) {
     return false;
   }
 
   const headerSet = new Set(fields);
 
-  return REQUIRED_HEADERS.every((requiredHeader: string) => headerSet.has(requiredHeader));
+  return requiredHeaders.every((requiredHeader: string) => headerSet.has(requiredHeader));
 }
 
 function resolveClass(classId: number): Class {
@@ -273,13 +332,14 @@ async function loadQuestionBank(): Promise<QuestionBankEntry[]> {
 const persistUpload = db.transaction(
   (input: {
     filename: string;
-    rows: CsvRow[];
+    parsedCsv: ParsedCsvRows;
     targetClass: Class;
     questionBank: QuestionBankEntry[];
   }): {
     uploadId: number;
     studentsProcessed: number;
     missedItemsGenerated: number;
+    uploadFormat: ParsedCsvRows["format"];
   } => {
     const uploadRecord = insertUpload({
       teacher_id: input.targetClass.teacher_id,
@@ -289,26 +349,63 @@ const persistUpload = db.transaction(
 
     let studentsProcessed = 0;
     let missedItemsGenerated = 0;
+    const questionIdSet = new Set(
+      input.questionBank.map((question: QuestionBankEntry) => question.id),
+    );
 
-    for (const row of input.rows) {
-      const student = upsertStudent({
-        class_id: input.targetClass.id,
-        name: row.student_name,
-      });
+    if (input.parsedCsv.format === "subject_scores") {
+      for (const row of input.parsedCsv.rows) {
+        const student = upsertStudent({
+          class_id: input.targetClass.id,
+          name: row.student_name,
+        });
 
-      studentsProcessed += 1;
+        studentsProcessed += 1;
 
-      const missedItems = buildMissedItemsForStudent({
-        uploadId: uploadRecord.id,
-        studentId: student.id,
-        row,
-        gradeLevel: input.targetClass.grade_level,
-        questionBank: input.questionBank,
-      });
+        const missedItems = buildMissedItemsForStudent({
+          uploadId: uploadRecord.id,
+          studentId: student.id,
+          row,
+          gradeLevel: input.targetClass.grade_level,
+          questionBank: input.questionBank,
+        });
+
+        if (missedItems.length > 0) {
+          insertMissedItems(missedItems);
+          missedItemsGenerated += missedItems.length;
+        }
+      }
+    } else {
+      const studentsByName = new Map<string, number>();
+      const missedItems: MissedItemInsert[] = [];
+
+      for (const row of input.parsedCsv.rows) {
+        validateDetailedQuestionId(row.question_id, questionIdSet);
+
+        let studentId = studentsByName.get(row.student_name);
+
+        if (typeof studentId === "undefined") {
+          const student = upsertStudent({
+            class_id: input.targetClass.id,
+            name: row.student_name,
+          });
+
+          studentId = student.id;
+          studentsByName.set(row.student_name, studentId);
+          studentsProcessed += 1;
+        }
+
+        missedItems.push({
+          upload_id: uploadRecord.id,
+          student_id: studentId,
+          question_id: row.question_id,
+          student_answer_en: row.student_answer,
+        });
+      }
 
       if (missedItems.length > 0) {
         insertMissedItems(missedItems);
-        missedItemsGenerated += missedItems.length;
+        missedItemsGenerated = missedItems.length;
       }
     }
 
@@ -316,6 +413,7 @@ const persistUpload = db.transaction(
       uploadId: uploadRecord.id,
       studentsProcessed,
       missedItemsGenerated,
+      uploadFormat: input.parsedCsv.format,
     };
   },
 );
@@ -323,7 +421,7 @@ const persistUpload = db.transaction(
 function buildMissedItemsForStudent(input: {
   uploadId: number;
   studentId: number;
-  row: CsvRow;
+  row: ScoreCsvRow;
   gradeLevel: QuestionGrade;
   questionBank: QuestionBankEntry[];
 }): MissedItemInsert[] {
@@ -345,7 +443,7 @@ function buildMissedItemsForStudent(input: {
   });
 }
 
-function getFailedSubjects(row: CsvRow): QuestionSubject[] {
+function getFailedSubjects(row: ScoreCsvRow): QuestionSubject[] {
   const failedSubjects: QuestionSubject[] = [];
 
   for (const [column, subject] of Object.entries(CSV_SUBJECT_COLUMN_MAP) as Array<
@@ -357,4 +455,16 @@ function getFailedSubjects(row: CsvRow): QuestionSubject[] {
   }
 
   return failedSubjects;
+}
+
+function validateDetailedQuestionId(
+  questionId: string,
+  validQuestionIds: Set<string>,
+): void {
+  if (!validQuestionIds.has(questionId)) {
+    throw new AppError(`question_id "${questionId}" was not found in the question bank.`, {
+      statusCode: 400,
+      code: "UPLOAD_UNKNOWN_QUESTION_ID",
+    });
+  }
 }

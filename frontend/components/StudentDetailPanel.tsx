@@ -1,11 +1,24 @@
 "use client";
 
 import { X, Lightbulb, Calendar } from "lucide-react";
-import { Student, getInitials, getInitialsBgColor, getClassificationColor } from "@/lib/mockData";
 import { useLanguage } from "@/components/LanguageProvider";
+import type { UiClassification } from "@/lib/ui";
+import { getClassificationColor, getInitials, getInitialsBgColor } from "@/lib/ui";
+
+export interface StudentDetailPanelStudent {
+  id: number;
+  name: string;
+  classification: UiClassification;
+  skills: Array<{
+    skillTag: string;
+    classification: UiClassification;
+    explanation: string | null;
+    diagnosticCount: number;
+  }>;
+}
 
 interface StudentDetailPanelProps {
-  student: Student;
+  student: StudentDetailPanelStudent;
   onClose: () => void;
 }
 
@@ -20,7 +33,6 @@ export default function StudentDetailPanel({
 
   return (
     <div className="sticky top-0 flex h-screen w-80 flex-col border-l border-gray-100 bg-white">
-      {/* Header */}
       <div className="flex items-start justify-between p-5 pb-4">
         <div className="flex items-center gap-3">
           <div
@@ -45,7 +57,6 @@ export default function StudentDetailPanel({
         </button>
       </div>
 
-      {/* Skills Mastery */}
       <div className="flex-1 overflow-y-auto px-5">
         <h4 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-400">
           {t("detail.skillsMastery")}
@@ -58,7 +69,7 @@ export default function StudentDetailPanel({
           {student.skills.length > 0 ? (
             student.skills.map((skill, skillIndex) => {
               const skillColor = getClassificationColor(skill.classification);
-              const seed = skill.name.length + skillIndex;
+              const seed = skill.skillTag.length + skillIndex;
               const mastery =
                 skill.classification === "language"
                   ? 65 + (seed % 20)
@@ -69,10 +80,10 @@ export default function StudentDetailPanel({
                       : 45 + (seed % 15);
 
               return (
-                <div key={skill.name}>
+                <div key={skill.skillTag}>
                   <div className="mb-1 flex items-center justify-between">
                     <span className="text-sm font-medium text-navy">
-                      {skill.name}
+                      {skill.skillTag}
                     </span>
                     <span className="text-xs text-gray-400">{mastery}%</span>
                   </div>
@@ -90,7 +101,6 @@ export default function StudentDetailPanel({
           )}
         </div>
 
-        {/* Coach's Insight */}
         {student.skills.length > 0 && (
           <div className="mt-6 rounded-xl bg-gold/10 p-4">
             <div className="mb-2 flex items-center gap-2">
@@ -100,13 +110,12 @@ export default function StudentDetailPanel({
               </span>
             </div>
             <p className="text-sm leading-relaxed text-gray-600">
-              {student.skills[0].explanation}
+              {student.skills[0]?.explanation ?? t("detail.noSkills")}
             </p>
           </div>
         )}
 
-        {/* Class Milestones */}
-        <div className="mt-6 mb-4">
+        <div className="mb-4 mt-6">
           <h4 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-400">
             {t("detail.classMilestones")}
           </h4>
@@ -120,7 +129,6 @@ export default function StudentDetailPanel({
         </div>
       </div>
 
-      {/* Assign Practice Button */}
       <div className="border-t border-gray-100 p-4">
         <button className="w-full rounded-lg bg-coral px-4 py-3 text-sm font-semibold text-white transition-all duration-200 hover:scale-[1.02] hover:bg-coral/90">
           {t("detail.assignPractice")}

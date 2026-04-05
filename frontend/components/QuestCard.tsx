@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { BookOpen, Globe, FlaskConical } from "lucide-react";
-import { Quest } from "@/lib/mockData";
 import { useLanguage } from "@/components/LanguageProvider";
 
 const iconMap: Record<string, typeof BookOpen> = {
@@ -21,10 +20,19 @@ const iconMap: Record<string, typeof BookOpen> = {
 };
 
 interface QuestCardProps {
-  quest: Quest;
+  quest: {
+    id: number;
+    title: string;
+    skillTag: string;
+    totalItems: number;
+    completedItems: number;
+    xpReward: number;
+    status: "in_progress" | "not_started" | "completed";
+  };
+  studentId: number;
 }
 
-export default function QuestCard({ quest }: QuestCardProps) {
+export default function QuestCard({ quest, studentId }: QuestCardProps) {
   const { t } = useLanguage();
   const Icon = iconMap[quest.skillTag] || iconMap.default;
   const progressPct =
@@ -35,7 +43,7 @@ export default function QuestCard({ quest }: QuestCardProps) {
 
   return (
     <Link
-      href={`/quests?id=${quest.id}`}
+      href={`/quests?studentId=${studentId}&questId=${quest.id}`}
       className="group rounded-xl bg-white p-5 shadow-sm transition-all duration-200 hover:scale-[1.02] hover:shadow-md"
     >
       {/* Icon */}
