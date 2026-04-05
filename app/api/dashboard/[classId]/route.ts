@@ -1,5 +1,3 @@
-import { NextResponse } from "next/server";
-
 import {
   getClassById,
   getClassDashboard,
@@ -7,7 +5,7 @@ import {
   type ClassSubjectGapCount,
   type StudentDiagnosticSummary as DatabaseStudentDiagnosticSummary,
 } from "../../../../lib/db";
-import { AppError } from "../../../../lib/errors";
+import { AppError, handleApiError, handleApiOptions, jsonSuccess } from "../../../../lib/errors";
 
 const DASHBOARD_COLOR_CODES = {
   YELLOW: "yellow",
@@ -56,6 +54,10 @@ interface DashboardResponseData {
   classStats: ClassStats;
 }
 
+export async function OPTIONS(): Promise<Response> {
+  return handleApiOptions();
+}
+
 /**
  * Returns the teacher dashboard summary for a class.
  */
@@ -78,23 +80,11 @@ export async function GET(
       classStats: buildClassStats(students, subjectGapCounts),
     };
 
-    return NextResponse.json(
-      {
-        success: true,
-        data: responseData,
-      },
-      { status: 200 },
-    );
+    return jsonSuccess(responseData);
   } catch (error: unknown) {
-    const appError = toRouteError(error);
-
-    return NextResponse.json(
-      {
-        success: false,
-        error: appError.message,
-      },
-      { status: appError.statusCode },
-    );
+    return handleApiError(error, {
+      fallbackMessage: "Failed to load the class dashboard.",
+    });
   }
 }
 
@@ -199,16 +189,4 @@ function buildClassStats(
     breakdownCounts,
     subjectsWithHighestGapRates,
   };
-}
-
-function toRouteError(error: unknown): AppError {
-  if (error instanceof AppError) {
-    return error;
-  }
-
-  return new AppError("Failed to load the class dashboard.", {
-    statusCode: 500,
-    code: "DASHBOARD_ROUTE_FAILED",
-    cause: error,
-  });
 }

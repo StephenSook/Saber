@@ -1,4 +1,3 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import {
@@ -10,7 +9,7 @@ import {
   saveDiagnosticResult,
   type Question,
 } from "../../../lib/db";
-import { AppError } from "../../../lib/errors";
+import { AppError, handleApiError, handleApiOptions, jsonSuccess } from "../../../lib/errors";
 import { evaluateSpanishAnswer } from "../../../lib/gemini";
 
 const inputMethodSchema = z.enum(["text", "speech"]);
@@ -41,6 +40,10 @@ interface AnswersResponseData {
   correct: boolean;
   xpEarned: number;
   newLevel: number | null;
+}
+
+export async function OPTIONS(): Promise<Response> {
+  return handleApiOptions();
 }
 
 /**
@@ -76,23 +79,11 @@ export async function POST(request: Request): Promise<Response> {
       newLevel: xpResult.level > previousStudent.level ? xpResult.level : null,
     };
 
-    return NextResponse.json(
-      {
-        success: true,
-        data: responseData,
-      },
-      { status: 200 },
-    );
+    return jsonSuccess(responseData);
   } catch (error: unknown) {
-    const appError = toRouteError(error);
-
-    return NextResponse.json(
-      {
-        success: false,
-        error: appError.message,
-      },
-      { status: appError.statusCode },
-    );
+    return handleApiError(error, {
+      fallbackMessage: "Failed to store the student's answer.",
+    });
   }
 }
 
@@ -200,16 +191,4 @@ function getChoiceIndex(correctAnswer: string): number | null {
 
 function normalizeAnswer(value: string): string {
   return value.trim().toLowerCase();
-}
-
-function toRouteError(error: unknown): AppError {
-  if (error instanceof AppError) {
-    return error;
-  }
-
-  return new AppError("Failed to store the student's answer.", {
-    statusCode: 500,
-    code: "ANSWERS_ROUTE_FAILED",
-    cause: error,
-  });
 }

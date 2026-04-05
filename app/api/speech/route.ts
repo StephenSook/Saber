@@ -1,4 +1,3 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import {
@@ -7,7 +6,7 @@ import {
   getLatestMissedItemByStudentAndQuestion,
   saveDiagnosticResult,
 } from "../../../lib/db";
-import { AppError } from "../../../lib/errors";
+import { AppError, handleApiError, handleApiOptions, jsonSuccess } from "../../../lib/errors";
 import { evaluateSpanishAnswer } from "../../../lib/gemini";
 
 const DIAGNOSTIC_XP_REWARD = 50;
@@ -35,6 +34,10 @@ interface SpeechResponseData {
   correct: boolean;
   feedback: string;
   xpEarned: number;
+}
+
+export async function OPTIONS(): Promise<Response> {
+  return handleApiOptions();
 }
 
 /**
@@ -74,23 +77,11 @@ export async function POST(request: Request): Promise<Response> {
       xpEarned: xpResult.amount_awarded,
     };
 
-    return NextResponse.json(
-      {
-        success: true,
-        data: responseData,
-      },
-      { status: 200 },
-    );
+    return jsonSuccess(responseData);
   } catch (error: unknown) {
-    const appError = toRouteError(error);
-
-    return NextResponse.json(
-      {
-        success: false,
-        error: appError.message,
-      },
-      { status: appError.statusCode },
-    );
+    return handleApiError(error, {
+      fallbackMessage: "Failed to process the speech transcript.",
+    });
   }
 }
 
@@ -137,16 +128,4 @@ function requireSpanishQuestion(questionEs: string): string {
   }
 
   return trimmedQuestionEs;
-}
-
-function toRouteError(error: unknown): AppError {
-  if (error instanceof AppError) {
-    return error;
-  }
-
-  return new AppError("Failed to process the speech transcript.", {
-    statusCode: 500,
-    code: "SPEECH_ROUTE_FAILED",
-    cause: error,
-  });
 }

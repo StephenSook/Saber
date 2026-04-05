@@ -172,7 +172,12 @@ export async function generateSpanishQuestion(
 export async function classifyGap(payload: ClassifyPayload): Promise<ClassificationResult> {
   try {
     const safePayload = classifyPayloadSchema.parse(payload);
-    const promptText = buildPrompt(prompts.classifyGap, safePayload);
+    const promptText = buildPrompt(prompts.classifyGap, {
+      question_en: safePayload.question_en,
+      answer_en: safePayload.answer_en,
+      question_es: safePayload.question_es,
+      answer_es: safePayload.answer_es,
+    });
 
     return await requestStructuredJson<ClassificationResult>(
       promptText,
@@ -245,7 +250,7 @@ function getSharedModel(): GenerativeModel {
 
   if (!apiKey) {
     throw new AppError("Missing GEMINI_API_KEY environment variable.", {
-      statusCode: 500,
+      statusCode: 503,
       code: "GEMINI_API_KEY_MISSING",
     });
   }
@@ -279,7 +284,7 @@ async function requestStructuredJson<T>(
 
   if (!validationResult.success) {
     throw new AppError("Gemini returned an invalid response shape.", {
-      statusCode: 502,
+      statusCode: 503,
       code: "GEMINI_INVALID_RESPONSE",
       cause: validationResult.error,
     });
@@ -291,7 +296,7 @@ async function requestStructuredJson<T>(
 function extractResponseText(result: unknown): string {
   if (typeof result !== "object" || result === null || !("response" in result)) {
     throw new AppError("Gemini returned an empty result.", {
-      statusCode: 502,
+      statusCode: 503,
       code: "GEMINI_EMPTY_RESULT",
     });
   }
@@ -300,7 +305,7 @@ function extractResponseText(result: unknown): string {
 
   if (typeof response !== "object" || response === null || !("text" in response)) {
     throw new AppError("Gemini did not provide a readable response.", {
-      statusCode: 502,
+      statusCode: 503,
       code: "GEMINI_MISSING_RESPONSE_TEXT",
     });
   }
@@ -309,7 +314,7 @@ function extractResponseText(result: unknown): string {
 
   if (typeof responseText !== "function") {
     throw new AppError("Gemini response text accessor is invalid.", {
-      statusCode: 502,
+      statusCode: 503,
       code: "GEMINI_INVALID_RESPONSE_TEXT_ACCESSOR",
     });
   }
@@ -318,7 +323,7 @@ function extractResponseText(result: unknown): string {
 
   if (typeof textValue !== "string" || textValue.trim().length === 0) {
     throw new AppError("Gemini returned an empty response body.", {
-      statusCode: 502,
+      statusCode: 503,
       code: "GEMINI_EMPTY_RESPONSE_TEXT",
     });
   }
@@ -337,7 +342,7 @@ function parseJsonPayload(responseText: string): unknown {
     return JSON.parse(normalizedText) as unknown;
   } catch (error: unknown) {
     throw new AppError("Gemini returned malformed JSON.", {
-      statusCode: 502,
+      statusCode: 503,
       code: "GEMINI_MALFORMED_JSON",
       cause: error,
     });
@@ -350,8 +355,39 @@ function wrapGeminiError(error: unknown, message: string, code: string): AppErro
   }
 
   return new AppError(message, {
-    statusCode: 502,
+    statusCode: 503,
     code,
     cause: error,
   });
+}
+
+/**
+ * Lightweight connectivity check for the health endpoint (one minimal generation call).
+ */
+export async function probeGeminiHealth(): Promise<"ok" | "error"> {
+  const apiKey = process.env.GEMINI_API_KEY?.trim();
+
+  if (!apiKey) {
+    return "error";
+  }
+
+  try {
+    const model = getSharedModel();
+    await model.generateContent({
+      contents: [
+        {
+          role: "user",
+          parts: [{ text: "Reply with the single letter: A" }],
+        },
+      ],
+      generationConfig: {
+        maxOutputTokens: 8,
+        temperature: 0,
+      },
+    });
+
+    return "ok";
+  } catch {
+    return "error";
+  }
 }

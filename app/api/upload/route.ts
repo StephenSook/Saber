@@ -1,7 +1,6 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
-import { NextResponse } from "next/server";
 import Papa from "papaparse";
 import { z } from "zod";
 
@@ -17,7 +16,7 @@ import {
   type QuestionSubject,
   upsertStudent,
 } from "../../../lib/db";
-import { AppError } from "../../../lib/errors";
+import { AppError, handleApiError, handleApiOptions, jsonSuccess } from "../../../lib/errors";
 
 const REQUIRED_HEADERS = [
   "student_name",
@@ -93,6 +92,10 @@ type QuestionBankEntry = z.infer<typeof questionBankEntrySchema>;
 
 let questionBankPromise: Promise<QuestionBankEntry[]> | null = null;
 
+export async function OPTIONS(): Promise<Response> {
+  return handleApiOptions();
+}
+
 /**
  * Accepts a CSV upload, creates one upload record, upserts students, and generates missed items.
  */
@@ -115,23 +118,11 @@ export async function POST(request: Request): Promise<Response> {
       questionBank,
     });
 
-    return NextResponse.json(
-      {
-        success: true,
-        data: result,
-      },
-      { status: 200 },
-    );
+    return jsonSuccess(result);
   } catch (error: unknown) {
-    const appError = toRouteError(error);
-
-    return NextResponse.json(
-      {
-        success: false,
-        error: appError.message,
-      },
-      { status: appError.statusCode },
-    );
+    return handleApiError(error, {
+      fallbackMessage: "Failed to process the uploaded CSV.",
+    });
   }
 }
 
@@ -366,16 +357,4 @@ function getFailedSubjects(row: CsvRow): QuestionSubject[] {
   }
 
   return failedSubjects;
-}
-
-function toRouteError(error: unknown): AppError {
-  if (error instanceof AppError) {
-    return error;
-  }
-
-  return new AppError("Failed to process the uploaded CSV.", {
-    statusCode: 500,
-    code: "UPLOAD_ROUTE_FAILED",
-    cause: error,
-  });
 }

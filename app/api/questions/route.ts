@@ -1,4 +1,3 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import {
@@ -8,7 +7,7 @@ import {
   type Question,
   updateQuestionSpanishContent,
 } from "../../../lib/db";
-import { AppError } from "../../../lib/errors";
+import { AppError, handleApiError, handleApiOptions, jsonSuccess } from "../../../lib/errors";
 import { generateSpanishQuestion } from "../../../lib/gemini";
 
 const GENERATION_BATCH_SIZE = 5;
@@ -33,6 +32,10 @@ interface QuestionsResponseData {
   generated: number;
   skipped: number;
   questions: Question[];
+}
+
+export async function OPTIONS(): Promise<Response> {
+  return handleApiOptions();
 }
 
 /**
@@ -77,23 +80,11 @@ export async function POST(request: Request): Promise<Response> {
       questions: Array.from(uniqueQuestions.values()),
     };
 
-    return NextResponse.json(
-      {
-        success: true,
-        data: responseData,
-      },
-      { status: 200 },
-    );
+    return jsonSuccess(responseData);
   } catch (error: unknown) {
-    const appError = toRouteError(error);
-
-    return NextResponse.json(
-      {
-        success: false,
-        error: appError.message,
-      },
-      { status: appError.statusCode },
-    );
+    return handleApiError(error, {
+      fallbackMessage: "Failed to generate Spanish questions.",
+    });
   }
 }
 
@@ -200,17 +191,5 @@ function logQuestionGenerationFailure(
     uploadId,
     questionId,
     error: error instanceof Error ? error.message : String(error),
-  });
-}
-
-function toRouteError(error: unknown): AppError {
-  if (error instanceof AppError) {
-    return error;
-  }
-
-  return new AppError("Failed to generate Spanish questions.", {
-    statusCode: 500,
-    code: "QUESTIONS_ROUTE_FAILED",
-    cause: error,
   });
 }

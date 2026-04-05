@@ -1,9 +1,8 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { classifyStudentResponse } from "../../../lib/classifier";
 import { getLatestMissedItemByStudentAndQuestion } from "../../../lib/db";
-import { AppError } from "../../../lib/errors";
+import { AppError, handleApiError, handleApiOptions, jsonSuccess } from "../../../lib/errors";
 
 const requestBodySchema = z.object({
   studentId: z.preprocess(
@@ -22,6 +21,10 @@ const requestBodySchema = z.object({
 });
 
 type ClassifyRouteRequestBody = z.infer<typeof requestBodySchema>;
+
+export async function OPTIONS(): Promise<Response> {
+  return handleApiOptions();
+}
 
 /**
  * Classifies a student's Spanish answer against the stored English missed-item context.
@@ -45,23 +48,11 @@ export async function POST(request: Request): Promise<Response> {
       answer_es: payload.answerEs,
     });
 
-    return NextResponse.json(
-      {
-        success: true,
-        data: diagnosticRecord,
-      },
-      { status: 200 },
-    );
+    return jsonSuccess(diagnosticRecord);
   } catch (error: unknown) {
-    const appError = toRouteError(error);
-
-    return NextResponse.json(
-      {
-        success: false,
-        error: appError.message,
-      },
-      { status: appError.statusCode },
-    );
+    return handleApiError(error, {
+      fallbackMessage: "Failed to classify the student's response.",
+    });
   }
 }
 
@@ -113,16 +104,4 @@ function requireSpanishQuestion(questionEs: string): string {
   }
 
   return trimmedQuestionEs;
-}
-
-function toRouteError(error: unknown): AppError {
-  if (error instanceof AppError) {
-    return error;
-  }
-
-  return new AppError("Failed to classify the student's response.", {
-    statusCode: 500,
-    code: "CLASSIFY_ROUTE_FAILED",
-    cause: error,
-  });
 }

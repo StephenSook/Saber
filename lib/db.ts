@@ -309,6 +309,18 @@ const DEFAULT_DATABASE_PATH = path.join(process.cwd(), "data", "saber.db");
 
 export const db: BetterSqliteDatabase = createDatabase();
 
+/**
+ * Verifies the SQLite database connection with a trivial query.
+ */
+export function probeDatabaseHealth(): "ok" | "error" {
+  try {
+    db.prepare("SELECT 1").get();
+    return "ok";
+  } catch {
+    return "error";
+  }
+}
+
 const getStudentByIdStatement = db.prepare(`
   SELECT id, class_id, name, xp, level, streak_days, last_active
   FROM students
