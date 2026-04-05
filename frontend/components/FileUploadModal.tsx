@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { Upload, X, FileText } from "lucide-react";
 import { useLanguage } from "@/components/LanguageProvider";
 
@@ -9,6 +9,10 @@ interface FileUploadModalProps {
   onClose: () => void;
   onUpload: (file: File) => Promise<void> | void;
   isSubmitting?: boolean;
+  /** When false, submit stays disabled (e.g. teacher classId not loaded yet). */
+  allowSubmit?: boolean;
+  /** Shown near the submit button when {@link allowSubmit} is false. */
+  submitBlockedMessage?: string;
 }
 
 export default function FileUploadModal({
@@ -16,12 +20,21 @@ export default function FileUploadModal({
   onClose,
   onUpload,
   isSubmitting = false,
+  allowSubmit = true,
+  submitBlockedMessage,
 }: FileUploadModalProps) {
   const { t } = useLanguage();
   const [isDragging, setIsDragging] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string[][] | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      setUploadError(null);
+    }
+  }, [isOpen]);
 
   const parseCSV = useCallback(
     (text: string) => {
@@ -37,6 +50,7 @@ export default function FileUploadModal({
 
   const handleFile = useCallback(
     (f: File) => {
+      setUploadError(null);
       setFile(f);
       const reader = new FileReader();
       reader.onload = (e) => {
@@ -60,19 +74,28 @@ export default function FileUploadModal({
     [handleFile]
   );
 
-  const handleSubmit = () => {
-    if (file !== null) {
-      void Promise.resolve(onUpload(file))
-        .then(() => {
-          onClose();
-          setFile(null);
-          setPreview(null);
-        })
-        .catch(() => {
-          // Parent state surfaces the upload error without closing the modal.
-        });
+  const handleSubmit = (): void => {
+    if (!allowSubmit || file === null) {
+      return;
     }
+
+    setUploadError(null);
+
+    void Promise.resolve(onUpload(file))
+      .then(() => {
+        onClose();
+        setFile(null);
+        setPreview(null);
+      })
+      .catch((err: unknown) => {
+        setUploadError(
+          err instanceof Error ? err.message : "Failed to upload scores.",
+        );
+      });
   };
+
+  const submitDisabled =
+    isSubmitting || !allowSubmit || file === null;
 
   if (!isOpen) return null;
 
@@ -89,6 +112,7 @@ export default function FileUploadModal({
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-bold text-navy">{t("upload.title")}</h2>
           <button
+            type="button"
             onClick={onClose}
             className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
           >
@@ -138,9 +162,11 @@ export default function FileUploadModal({
               <FileText className="h-5 w-5 text-teal" strokeWidth={1.5} />
               <span className="text-sm font-medium text-navy">{file.name}</span>
               <button
+                type="button"
                 onClick={() => {
                   setFile(null);
                   setPreview(null);
+                  setUploadError(null);
                 }}
                 className="ml-auto text-xs text-gray-400 hover:text-gray-600"
               >
@@ -180,10 +206,19 @@ export default function FileUploadModal({
             )}
 
             {/* Submit */}
+            {!allowSubmit && submitBlockedMessage && (
+              <p className="mb-2 text-xs text-amber-700">{submitBlockedMessage}</p>
+            )}
+            {uploadError && (
+              <div className="mb-3 rounded-lg border border-coral/30 bg-coral/5 px-3 py-2 text-xs text-navy">
+                {uploadError}
+              </div>
+            )}
             <button
+              type="button"
               onClick={handleSubmit}
-              disabled={isSubmitting}
-              className="w-full rounded-lg bg-teal px-4 py-2.5 text-sm font-medium text-white transition-all duration-200 hover:scale-[1.02]"
+              disabled={submitDisabled}
+              className="w-full rounded-lg bg-teal px-4 py-2.5 text-sm font-medium text-white transition-all duration-200 hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isSubmitting ? "Uploading..." : t("upload.submit")}
             </button>

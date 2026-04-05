@@ -398,6 +398,7 @@ type BetterSqliteDatabase = InstanceType<typeof BetterSqlite3>;
 
 const DEFAULT_DATABASE_PATH = path.join(process.cwd(), "data", "saber.db");
 const DEFAULT_SCHEMA_PATH = path.join(process.cwd(), "data", "schema.sql");
+const QUESTION_BANK_JSON_PATH = path.join(process.cwd(), "data", "question_bank.json");
 
 export const db: BetterSqliteDatabase = createDatabase();
 
@@ -758,6 +759,149 @@ function createDatabase(): BetterSqliteDatabase {
   return database;
 }
 
+/**
+ * Loads `data/question_bank.json` into the `questions` table so foreign keys on
+ * `missed_items.question_id` succeed after CSV uploads (upload uses the bank JSON to pick IDs).
+ * Matches the row shape produced by `scripts/seed_db.ts` when seeding from the bank.
+ */
+function syncQuestionsFromQuestionBank(database: BetterSqliteDatabase): void {
+  let fileContents: string;
+
+  try {
+    fileContents = readFileSync(QUESTION_BANK_JSON_PATH, "utf8");
+  } catch (error: unknown) {
+    throw new AppError("Failed to read the question bank file for database sync.", {
+      statusCode: 500,
+      code: "DB_QUESTION_BANK_SYNC_READ_FAILED",
+      cause: error,
+    });
+  }
+
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(fileContents) as unknown;
+  } catch (error: unknown) {
+    throw new AppError("Failed to parse the question bank JSON.", {
+      statusCode: 500,
+      code: "DB_QUESTION_BANK_SYNC_PARSE_FAILED",
+      cause: error,
+    });
+  }
+
+  if (!Array.isArray(parsed)) {
+    throw new AppError("The question bank file must contain a JSON array.", {
+      statusCode: 500,
+      code: "DB_QUESTION_BANK_SYNC_INVALID",
+    });
+  }
+
+  const statement = database.prepare(`
+    INSERT OR REPLACE INTO questions (
+      id,
+      subject,
+      grade,
+      skill_tag,
+      question_type,
+      question_en,
+      question_es,
+      choices_en,
+      choices_es,
+      correct_answer
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  const insertAll = database.transaction((rows: unknown[]): void => {
+    for (const row of rows) {
+      if (typeof row !== "object" || row === null) {
+        throw new AppError("Each question bank entry must be an object.", {
+          statusCode: 500,
+          code: "DB_QUESTION_BANK_SYNC_INVALID_ROW",
+        });
+      }
+
+      const record = row as Record<string, unknown>;
+      const id = typeof record.id === "string" ? record.id.trim() : "";
+
+      if (id.length === 0) {
+        throw new AppError("Each question bank entry must have a non-empty string id.", {
+          statusCode: 500,
+          code: "DB_QUESTION_BANK_SYNC_INVALID_ROW",
+        });
+      }
+
+      const subject = typeof record.subject === "string" ? record.subject : null;
+      const grade = typeof record.grade === "number" ? record.grade : Number.NaN;
+      const skillTag =
+        typeof record.skill_tag === "string" ? record.skill_tag : null;
+      const questionType =
+        typeof record.question_type === "string" ? record.question_type : null;
+      const questionEn =
+        typeof record.question_en === "string" ? record.question_en : null;
+      const questionEs =
+        typeof record.question_es === "string" ? record.question_es : null;
+
+      if (
+        subject === null ||
+        !Number.isFinite(grade) ||
+        skillTag === null ||
+        questionType === null ||
+        questionEn === null ||
+        questionEs === null
+      ) {
+        throw new AppError(`Question bank entry "${id}" is missing required fields.`, {
+          statusCode: 500,
+          code: "DB_QUESTION_BANK_SYNC_INVALID_ROW",
+        });
+      }
+
+      const choicesEn = Array.isArray(record.choices_en)
+        ? JSON.stringify(record.choices_en)
+        : typeof record.choices_en === "string"
+          ? record.choices_en
+          : null;
+      const choicesEs = Array.isArray(record.choices_es)
+        ? JSON.stringify(record.choices_es)
+        : typeof record.choices_es === "string"
+          ? record.choices_es
+          : null;
+      const correctAnswer =
+        typeof record.correct_answer === "string" &&
+        record.correct_answer.trim().length > 0
+          ? record.correct_answer
+          : String(record.question_en ?? "");
+
+      statement.run(
+        id,
+        subject,
+        grade,
+        skillTag,
+        questionType,
+        questionEn,
+        questionEs,
+        choicesEn,
+        choicesEs,
+        correctAnswer,
+      );
+    }
+  });
+
+  try {
+    insertAll(parsed);
+  } catch (error: unknown) {
+    if (error instanceof AppError) {
+      throw error;
+    }
+
+    throw wrapDatabaseError(
+      error,
+      "Failed to sync questions from the question bank.",
+      "DB_QUESTION_BANK_SYNC_FAILED",
+    );
+  }
+}
+
 function ensureDatabaseSchema(database: BetterSqliteDatabase): void {
   let schemaSql: string;
 
@@ -780,6 +924,8 @@ function ensureDatabaseSchema(database: BetterSqliteDatabase): void {
       cause: error,
     });
   }
+
+  syncQuestionsFromQuestionBank(database);
 }
 
 function resolveDatabasePath(): string {

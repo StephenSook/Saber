@@ -173,7 +173,11 @@ export default function TeacherDashboard() {
 
   const handleUpload = useCallback(
     async (file: File): Promise<void> => {
-      if (classId === null) return;
+      if (classId === null) {
+        throw new Error(
+          "Your class is not loaded yet. Wait a moment and try again, or refresh the page.",
+        );
+      }
 
       setIsUploading(true);
       setError(null);
@@ -464,6 +468,8 @@ export default function TeacherDashboard() {
         onClose={() => setUploadOpen(false)}
         onUpload={handleUpload}
         isSubmitting={isUploading}
+        allowSubmit={classId !== null}
+        submitBlockedMessage="Loading your class… try again in a moment."
       />
     </div>
   );
