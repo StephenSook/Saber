@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "smoke:test": "tsx scripts/smoke_test.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
@@ -19,6 +20,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.5.2",
+    "tsx": "^4.7.0",
     "typescript": "^6.0.2"
   }
 }
