@@ -65,6 +65,13 @@ export interface Student {
   last_active: string | null;
 }
 
+export interface Class {
+  id: number;
+  teacher_id: number;
+  name: string;
+  grade_level: QuestionGrade;
+}
+
 export interface Question {
   id: string;
   subject: QuestionSubject;
@@ -111,6 +118,14 @@ export interface XPLog {
   action: string;
   xp_earned: number;
   timestamp: string;
+}
+
+export interface Upload {
+  id: number;
+  teacher_id: number;
+  class_id: number;
+  filename: string;
+  uploaded_at: string;
 }
 
 export interface DiagnosticInsert {
@@ -184,6 +199,13 @@ export interface XPResult {
   last_active: string;
 }
 
+export interface UploadInsert {
+  teacher_id: number;
+  class_id: number;
+  filename: string;
+  uploaded_at?: string;
+}
+
 interface QuestionRow {
   id: string;
   subject: string;
@@ -195,6 +217,13 @@ interface QuestionRow {
   choices_en: string | null;
   choices_es: string | null;
   correct_answer: string;
+}
+
+interface ClassRow {
+  id: number;
+  teacher_id: number;
+  name: string;
+  grade_level: number;
 }
 
 interface DiagnosticRow {
@@ -252,6 +281,14 @@ interface LeaderboardRow {
   last_active: string | null;
 }
 
+interface UploadRow {
+  id: number;
+  teacher_id: number;
+  class_id: number;
+  filename: string;
+  uploaded_at: string;
+}
+
 interface RunResultLike {
   lastInsertRowid: number | bigint;
 }
@@ -268,11 +305,25 @@ const getStudentByIdStatement = db.prepare(`
   WHERE id = ?
 `);
 
+const getClassByIdStatement = db.prepare(`
+  SELECT id, teacher_id, name, grade_level
+  FROM classes
+  WHERE id = ?
+`);
+
 const getStudentsByClassStatement = db.prepare(`
   SELECT id, class_id, name, xp, level, streak_days, last_active
   FROM students
   WHERE class_id = ?
   ORDER BY name ASC, id ASC
+`);
+
+const getStudentByClassAndNameStatement = db.prepare(`
+  SELECT id, class_id, name, xp, level, streak_days, last_active
+  FROM students
+  WHERE class_id = ? AND name = ?
+  ORDER BY id ASC
+  LIMIT 1
 `);
 
 const getMissedItemsByUploadStatement = db.prepare(`
@@ -402,6 +453,17 @@ const insertMissedItemStatement = db.prepare(`
 const insertXPLogStatement = db.prepare(`
   INSERT INTO xp_logs (student_id, action, xp_earned, timestamp)
   VALUES (?, ?, ?, ?)
+`);
+
+const insertUploadStatement = db.prepare(`
+  INSERT INTO uploads (teacher_id, class_id, filename, uploaded_at)
+  VALUES (?, ?, ?, ?)
+`);
+
+const getUploadByIdStatement = db.prepare(`
+  SELECT id, teacher_id, class_id, filename, uploaded_at
+  FROM uploads
+  WHERE id = ?
 `);
 
 const updateStudentXPStatement = db.prepare(`
@@ -636,6 +698,23 @@ function parseStudentRow(row: unknown): Student {
   };
 }
 
+function parseClassRow(row: unknown): Class {
+  const record = getRecord(row, "class");
+  const classRow: ClassRow = {
+    id: getNumberField(record, "id", "class"),
+    teacher_id: getNumberField(record, "teacher_id", "class"),
+    name: getStringField(record, "name", "class"),
+    grade_level: getNumberField(record, "grade_level", "class"),
+  };
+
+  return {
+    id: classRow.id,
+    teacher_id: classRow.teacher_id,
+    name: classRow.name,
+    grade_level: ensureQuestionGrade(classRow.grade_level),
+  };
+}
+
 function parseQuestionRow(row: unknown): Question {
   const record = getRecord(row, "question");
   const questionRow: QuestionRow = {
@@ -738,6 +817,25 @@ function parseXPLogRow(row: unknown): XPLog {
     action: getStringField(record, "action", "xp_log"),
     xp_earned: getNumberField(record, "xp_earned", "xp_log"),
     timestamp: getStringField(record, "timestamp", "xp_log"),
+  };
+}
+
+function parseUploadRow(row: unknown): Upload {
+  const record = getRecord(row, "upload");
+  const uploadRow: UploadRow = {
+    id: getNumberField(record, "id", "upload"),
+    teacher_id: getNumberField(record, "teacher_id", "upload"),
+    class_id: getNumberField(record, "class_id", "upload"),
+    filename: getStringField(record, "filename", "upload"),
+    uploaded_at: getStringField(record, "uploaded_at", "upload"),
+  };
+
+  return {
+    id: uploadRow.id,
+    teacher_id: uploadRow.teacher_id,
+    class_id: uploadRow.class_id,
+    filename: uploadRow.filename,
+    uploaded_at: uploadRow.uploaded_at,
   };
 }
 
@@ -969,6 +1067,12 @@ function getStudentByIdOrThrow(studentId: number): Student {
   return requireRow(row, parseStudentRow, `Student ${studentId} was not found.`);
 }
 
+function getUploadByIdOrThrow(uploadId: number): Upload {
+  const row = getUploadByIdStatement.get(uploadId) as unknown;
+
+  return requireRow(row, parseUploadRow, `Upload ${uploadId} was not found.`);
+}
+
 const insertMissedItemsTransaction = db.transaction(
   (items: MissedItemInsert[]): void => {
     for (const item of items) {
@@ -986,7 +1090,9 @@ const upsertStudentTransaction = db.transaction(
   (data: StudentUpsert): Student => {
     const classId = ensurePositiveInteger("class_id", data.class_id);
     const name = ensureNonEmptyString("name", data.name);
-    const existingStudent = data.id ? getStudentByIdStatement.get(data.id) as unknown : undefined;
+    const existingStudent = data.id
+      ? (getStudentByIdStatement.get(data.id) as unknown)
+      : (getStudentByClassAndNameStatement.get(classId, name) as unknown);
     const existing = typeof existingStudent === "undefined" ? null : parseStudentRow(existingStudent);
     const xp = ensureNonNegativeInteger("xp", data.xp ?? existing?.xp ?? 0);
     const streakDays = ensureNonNegativeInteger(
@@ -996,8 +1102,8 @@ const upsertStudentTransaction = db.transaction(
     const lastActive = data.last_active ?? existing?.last_active ?? null;
     const level = calculateLevelFromTotalXP(xp);
 
-    if (typeof data.id === "number") {
-      const studentId = ensurePositiveInteger("id", data.id);
+    if (typeof data.id === "number" || existing !== null) {
+      const studentId = ensurePositiveInteger("id", data.id ?? existing!.id);
 
       upsertStudentByIdStatement.run(
         studentId,
@@ -1070,6 +1176,24 @@ export function getStudentsByClass(classId: number): Student[] {
       error,
       "Failed to load students for the class.",
       "DB_GET_STUDENTS_BY_CLASS_FAILED",
+    );
+  }
+}
+
+/**
+ * Returns the class record for the provided class id.
+ */
+export function getClassById(classId: number): Class {
+  try {
+    const safeClassId = ensurePositiveInteger("classId", classId);
+    const row = getClassByIdStatement.get(safeClassId) as unknown;
+
+    return requireRow(row, parseClassRow, `Class ${safeClassId} was not found.`);
+  } catch (error: unknown) {
+    throw wrapDatabaseError(
+      error,
+      "Failed to load the class record.",
+      "DB_GET_CLASS_BY_ID_FAILED",
     );
   }
 }
@@ -1241,6 +1365,35 @@ export function awardXP(
       error,
       "Failed to award XP to the student.",
       "DB_AWARD_XP_FAILED",
+    );
+  }
+}
+
+/**
+ * Inserts one upload record and returns the saved row.
+ */
+export function insertUpload(data: UploadInsert): Upload {
+  try {
+    const safeTeacherId = ensurePositiveInteger("teacher_id", data.teacher_id);
+    const safeClassId = ensurePositiveInteger("class_id", data.class_id);
+    const safeFilename = ensureNonEmptyString("filename", data.filename);
+    const uploadedAt = data.uploaded_at
+      ? ensureNonEmptyString("uploaded_at", data.uploaded_at)
+      : getCurrentTimestamp();
+
+    const result = insertUploadStatement.run(
+      safeTeacherId,
+      safeClassId,
+      safeFilename,
+      uploadedAt,
+    ) as RunResultLike;
+
+    return getUploadByIdOrThrow(toInsertRowId(result.lastInsertRowid));
+  } catch (error: unknown) {
+    throw wrapDatabaseError(
+      error,
+      "Failed to create the upload record.",
+      "DB_INSERT_UPLOAD_FAILED",
     );
   }
 }
