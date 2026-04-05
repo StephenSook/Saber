@@ -63,12 +63,13 @@ export async function OPTIONS(): Promise<Response> {
  */
 export async function GET(
   request: Request,
-  context: { params: { classId: string } },
+  context: { params: Promise<{ classId: string }> },
 ): Promise<Response> {
   void request;
 
   try {
-    const classId = parseClassId(context.params.classId);
+    const { classId: classIdParam } = await context.params;
+    const classId = parseClassId(classIdParam);
 
     getClassById(classId);
 
